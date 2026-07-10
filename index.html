@@ -109,6 +109,33 @@
   .modal-footer { display: flex; gap: 8px; margin-top: 20px; }
   .modal-footer button { flex: 1; padding: 11px 0; border-radius: 12px; font-size: 14px; }
   .export-row { display: flex; gap: 8px; margin-top: 8px; }
+
+  /* ---------------------------------------------------------------
+     Desktop layout (tablet/computador)
+  --------------------------------------------------------------- */
+  @media (min-width: 860px) {
+    body { padding-bottom: 0; }
+    #app { max-width: 1040px; padding-bottom: 0; display: flex; flex-direction: column; min-height: 100vh; }
+    header.app-header { order: 1; padding: 22px 32px 16px; position: static; }
+    header.app-header .header-top h1 { font-size: 24px; }
+    header .month-nav { max-width: 320px; }
+    nav.tabbar {
+      order: 2;
+      position: static;
+      border-top: none;
+      border-bottom: 1px solid #DEDFD6;
+      background: var(--card);
+    }
+    nav.tabbar .inner { max-width: 900px; grid-template-columns: repeat(5, minmax(120px, auto)); justify-content: center; }
+    nav.tabbar button { flex-direction: row; gap: 8px; padding: 14px 22px; }
+    nav.tabbar .glyph { font-size: 16px; }
+    nav.tabbar .lbl { font-size: 13px; }
+    main { order: 3; max-width: 900px; margin: 0 auto; width: 100%; padding: 28px 24px 60px; }
+    .stack:not(.dash-grid) { max-width: 640px; margin: 0 auto; width: 100%; }
+    .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+    .modal-backdrop { align-items: center; }
+    .modal-sheet { max-width: 440px; border-radius: 18px; max-height: 82vh; }
+  }
   .export-row button { flex: 1; padding: 11px 0; border-radius: 12px; font-size: 13px; font-weight: 500; }
 </style>
 </head>
@@ -318,7 +345,7 @@ function renderDashboard(){
   });
 
   return `
-    <div class="stack">
+    <div class="stack dash-grid">
       <div class="pill-row">
         <button class="pill ${state.dashboardFilter==='all'?'active':''}" data-action="set-dashboard-filter" data-filter="all">Todos</button>
         <button class="pill ${state.dashboardFilter===d.people[0]?'active':''}" data-action="set-dashboard-filter" data-filter="${esc(d.people[0])}">${esc(d.people[0])}</button>
@@ -687,7 +714,7 @@ function renderAnalises(){
   const topIncomeCat = incomeByCategory[0];
 
   return `
-    <div class="stack">
+    <div class="stack dash-grid">
       <section class="card tight" style="display:flex;flex-direction:column;gap:12px;">
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
