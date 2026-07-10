@@ -224,7 +224,8 @@ const state = {
   newRepeatMode: 'unica',
   novaDraft: { categoria: null, descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false },
   analiseFiltros: { monthStart: addMonths(currentMonthKey(), -5), monthEnd: currentMonthKey(), category: 'all', person: 'all', payment: 'all' },
-  dashboardFilter: (function(){ try { return localStorage.getItem('painelFiltroPessoa') || 'all'; } catch (e) { return 'all'; } })()
+  dashboardFilter: (function(){ try { return localStorage.getItem('painelFiltroPessoa') || 'all'; } catch (e) { return 'all'; } })(),
+  deleteRecurringModal: null
 };
 
 function captureNovaDraft(){
@@ -805,6 +806,24 @@ function renderTabBar(){
   `;
 }
 
+function renderDeleteRecurringModal(){
+  if (!state.deleteRecurringModal) return '';
+  const txId = state.deleteRecurringModal.txId;
+  return `
+    <div class="modal-backdrop" data-action="close-delete-recurring-backdrop">
+      <div class="modal-sheet">
+        <h2 class="font-display" style="font-size:18px;">Excluir lançamento recorrente</h2>
+        <p class="small-note" style="margin-top:6px;">Esse lançamento se repete pelos próximos meses. O que você quer fazer?</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
+          <button class="primary-btn" style="background:var(--rust);" data-action="confirm-delete-recurring" data-mode="all" data-tx-id="${txId}">Apagar lançamento recorrente</button>
+          <button class="primary-btn" style="background:var(--gold);" data-action="confirm-delete-recurring" data-mode="month" data-tx-id="${txId}">Apagar lançamento do mês</button>
+          <button class="btn-secondary" data-action="confirm-delete-recurring" data-mode="cancel" data-tx-id="${txId}">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderSettings(){
   if (!state.settingsOpen) return '';
   const d = state.data;
@@ -900,6 +919,7 @@ function render(){
     <main>${body}</main>
     ${renderTabBar()}
     ${renderSettings()}
+    ${renderDeleteRecurringModal()}
   `;
 
   if (state.tab === 'nova') {
@@ -1112,19 +1132,32 @@ document.addEventListener('click', function(e){
     const tx = state.data.transactions.find(t => t.id === btn.dataset.txId);
     if (!tx) return;
     if (tx.recurring) {
-      const cascade = confirm('Este lançamento é recorrente.\n\nOK — excluir este e os próximos meses ainda pendentes\nCancelar — excluir só este mês');
-      if (cascade) {
-        state.data.transactions = state.data.transactions.filter(t =>
-          !(t.groupId === tx.groupId && t.month >= tx.month && (t.id === tx.id || t.status === 'pendente'))
-        );
-      } else {
-        state.data.transactions = state.data.transactions.filter(t => t.id !== tx.id);
-      }
-      return persistAndRender();
+      state.deleteRecurringModal = { txId: tx.id };
+      return render();
     }
     if (!confirm('Excluir este lançamento?')) return;
     state.data.transactions = state.data.transactions.filter(t => t.id !== tx.id);
     return persistAndRender();
+  }
+
+  if (action === 'confirm-delete-recurring') {
+    const mode = btn.dataset.mode;
+    const tx = state.data.transactions.find(t => t.id === btn.dataset.txId);
+    state.deleteRecurringModal = null;
+    if (!tx || mode === 'cancel') return render();
+    if (mode === 'all') {
+      state.data.transactions = state.data.transactions.filter(t =>
+        !(t.groupId === tx.groupId && t.month >= tx.month && (t.id === tx.id || t.status === 'pendente'))
+      );
+    } else if (mode === 'month') {
+      state.data.transactions = state.data.transactions.filter(t => t.id !== tx.id);
+    }
+    return persistAndRender();
+  }
+
+  if (action === 'close-delete-recurring-backdrop' && e.target === btn) {
+    state.deleteRecurringModal = null;
+    return render();
   }
 
   if (action === 'cancel-installments') {
