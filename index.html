@@ -20,31 +20,36 @@
   body {
     margin: 0;
     background: var(--paper);
+    background-image: radial-gradient(circle at 1px 1px, rgba(28,43,51,0.05) 1px, transparent 0);
+    background-size: 15px 15px;
     color: var(--ink);
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
   .font-display { font-family: 'Fraunces', Georgia, serif; }
-  .font-mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; }
+  .font-mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
   button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
   input, select { font-family: inherit; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
   #app { max-width: 480px; margin: 0 auto; min-height: 100vh; padding-bottom: 88px; }
 
-  header.app-header { background: var(--ink); padding: 20px 16px 16px; position: sticky; top: 0; z-index: 20; }
+  header.app-header { background: linear-gradient(160deg, #223540 0%, var(--ink) 60%); padding: 20px 16px 16px; position: sticky; top: 0; z-index: 20; }
   .header-top { display: flex; align-items: center; justify-content: space-between; }
   .header-top h1 { font-size: 22px; margin: 0; color: var(--paper); }
-  .icon-btn { color: #C7CFC9; padding: 4px; }
+  .icon-btn { color: #C7CFC9; padding: 4px; transition: color 0.15s ease, transform 0.15s ease; }
+  .icon-btn:hover { color: #fff; }
   .month-nav { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
   .month-nav span { font-size: 13px; letter-spacing: 0.03em; color: #C7CFC9; }
   .save-note { font-size: 11px; text-align: center; margin-top: 8px; color: #9AA79F; }
 
   main { padding: 16px; }
   .stack { display: flex; flex-direction: column; gap: 20px; }
-  .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; }
+  .dash-grid { display: flex; flex-direction: column; gap: 20px; }
+  .dash-col { display: flex; flex-direction: column; gap: 20px; }
+  .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin: 0 0 10px; padding-left: 10px; border-left: 2px solid var(--teal); }
 
-  .card { background: var(--card); border-radius: 14px; padding: 16px; }
+  .card { background: var(--card); border-radius: 14px; padding: 16px; border: 1px solid rgba(28,43,51,0.06); box-shadow: 0 1px 2px rgba(28,43,51,0.03), 0 6px 16px rgba(28,43,51,0.04); }
   .card.tight { padding: 14px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .summary-label { font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
@@ -63,33 +68,45 @@
   .proj-pct { font-size: 11px; width: 48px; text-align: right; flex-shrink: 0; }
 
   .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .pill { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--card); color: var(--muted); }
-  .pill.active { background: var(--ink); color: var(--paper); }
+  .pill { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; background: var(--card); color: var(--muted); border: 1px solid rgba(28,43,51,0.08); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+  .pill:hover { border-color: rgba(28,43,51,0.18); }
+  .pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
-  .tx-row { background: var(--card); border-radius: 14px; padding: 14px; }
+  .tx-row { background: var(--card); border-radius: 14px; padding: 14px; border: 1px solid rgba(28,43,51,0.06); box-shadow: 0 1px 2px rgba(28,43,51,0.03); }
   .tx-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
   .tx-title { font-size: 14px; font-weight: 500; margin: 0; }
   .tx-sub { font-size: 11px; color: var(--muted); margin: 2px 0 0; }
   .tx-amount-btn { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .tx-amount { font-size: 14px; }
   .tx-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  .status-btn { font-size: 11px; padding: 5px 10px; border-radius: 999px; font-weight: 500; border: 1px solid; }
-  .empty-note { font-size: 14px; text-align: center; padding: 40px 0; color: var(--muted); }
+  .status-btn { font-size: 11px; padding: 5px 10px; border-radius: 999px; font-weight: 500; border: 1px solid; transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease; }
+  .status-btn.stamped {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    border-style: double;
+    border-width: 3px;
+    transform: rotate(-2deg);
+    box-shadow: 0 1px 0 rgba(28,43,51,0.06);
+  }
+  .empty-note { font-size: 14px; text-align: center; padding: 36px 16px; color: var(--muted); border: 1.5px dashed rgba(28,43,51,0.16); border-radius: 14px; background: rgba(255,255,255,0.3); }
 
   .field label { font-size: 12px; color: var(--muted); }
   .field { margin-bottom: 14px; }
   .field-input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #D8DAD2; font-size: 14px; margin-top: 4px; background: #fff; }
-  .type-toggle { display: flex; border-radius: 14px; overflow: hidden; background: var(--card); margin-bottom: 16px; }
-  .type-toggle button { flex: 1; padding: 11px 0; font-size: 14px; font-weight: 500; color: var(--muted); }
+  .type-toggle { display: flex; border-radius: 14px; overflow: hidden; background: var(--card); margin-bottom: 16px; border: 1px solid rgba(28,43,51,0.06); }
+  .type-toggle button { flex: 1; padding: 11px 0; font-size: 14px; font-weight: 500; color: var(--muted); transition: background 0.15s ease, color 0.15s ease; }
   .type-toggle button.active { background: var(--ink); color: var(--paper); }
-  .primary-btn { width: 100%; padding: 13px 0; border-radius: 14px; font-size: 14px; font-weight: 600; color: #fff; background: var(--teal); margin-top: 6px; }
+  .primary-btn { width: 100%; padding: 13px 0; border-radius: 14px; font-size: 14px; font-weight: 600; color: #fff; background: var(--teal); margin-top: 6px; transition: filter 0.15s ease, transform 0.1s ease; }
+  .primary-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .primary-btn:active:not(:disabled) { transform: scale(0.98); }
   .primary-btn:disabled { opacity: 0.4; }
   .responsavel-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-  .card-item { background: var(--card); border-radius: 14px; padding: 16px; margin-bottom: 10px; }
+  .card-item { background: var(--card); border-radius: 14px; padding: 16px; margin-bottom: 10px; border: 1px solid rgba(28,43,51,0.06); box-shadow: 0 1px 2px rgba(28,43,51,0.03), 0 6px 16px rgba(28,43,51,0.04); }
   .card-item-top { display: flex; align-items: center; justify-content: space-between; }
 
-  nav.tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid #DEDFD6; z-index: 20; }
+  nav.tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid #DEDFD6; z-index: 20; box-shadow: 0 -2px 12px rgba(28,43,51,0.05); }
   nav.tabbar .inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); }
   nav.tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0; color: var(--muted); }
   nav.tabbar button.active { color: var(--teal); }
@@ -116,9 +133,8 @@
   @media (min-width: 860px) {
     body { padding-bottom: 0; }
     #app { max-width: 1040px; padding-bottom: 0; display: flex; flex-direction: column; min-height: 100vh; }
-    header.app-header { order: 1; padding: 22px 32px 16px; position: static; }
-    header.app-header .header-top h1 { font-size: 24px; }
-    header .month-nav { max-width: 320px; }
+    header.app-header { order: 1; padding: 22px 32px 18px; position: static; }
+    header.app-header .header-top h1 { font-size: 25px; }
     nav.tabbar {
       order: 2;
       position: static;
@@ -127,14 +143,17 @@
       background: var(--card);
     }
     nav.tabbar .inner { max-width: 900px; grid-template-columns: repeat(5, minmax(120px, auto)); justify-content: center; }
-    nav.tabbar button { flex-direction: row; gap: 8px; padding: 14px 22px; }
+    nav.tabbar button { flex-direction: row; gap: 8px; padding: 16px 22px; position: relative; }
+    nav.tabbar button::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px; background: var(--teal); opacity: 0; transform: scaleX(0.6); transition: opacity 0.15s ease, transform 0.15s ease; }
+    nav.tabbar button.active::after { opacity: 1; transform: scaleX(1); }
     nav.tabbar .glyph { font-size: 16px; }
     nav.tabbar .lbl { font-size: 13px; }
-    main { order: 3; max-width: 900px; margin: 0 auto; width: 100%; padding: 28px 24px 60px; }
-    .stack:not(.dash-grid) { max-width: 640px; margin: 0 auto; width: 100%; }
+    main { order: 3; max-width: 900px; margin: 0 auto; width: 100%; padding: 32px 24px 60px; }
+    .stack:not(.wide) { max-width: 640px; margin: 0 auto; width: 100%; }
     .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+    .dash-col { display: flex; flex-direction: column; gap: 20px; }
     .modal-backdrop { align-items: center; }
-    .modal-sheet { max-width: 440px; border-radius: 18px; max-height: 82vh; }
+    .modal-sheet { max-width: 440px; border-radius: 18px; max-height: 82vh; box-shadow: 0 20px 60px rgba(28,43,51,0.25); }
   }
   .export-row button { flex: 1; padding: 11px 0; border-radius: 12px; font-size: 13px; font-weight: 500; }
 </style>
@@ -383,50 +402,56 @@ function renderDashboard(){
   });
 
   return `
-    <div class="stack dash-grid">
+    <div class="stack wide">
       <div class="pill-row">
         <button class="pill ${state.dashboardFilter==='all'?'active':''}" data-action="set-dashboard-filter" data-filter="all">Todos</button>
         <button class="pill ${state.dashboardFilter===d.people[0]?'active':''}" data-action="set-dashboard-filter" data-filter="${esc(d.people[0])}">${esc(d.people[0])}</button>
         <button class="pill ${state.dashboardFilter===d.people[1]?'active':''}" data-action="set-dashboard-filter" data-filter="${esc(d.people[1])}">${esc(d.people[1])}</button>
       </div>
-      <section>
-        <p class="eyebrow">Este mês</p>
-        <div class="grid2">
-          <div class="card tight">
-            <span>&#8593;</span>
-            <p class="summary-label">Receita confirmada</p>
-            <p class="summary-value font-mono" style="color:var(--teal)">${fmtBRL(t.incomeConfirmed)}</p>
-            <p class="summary-sub">de ${fmtBRL(t.incomeAll)} previsto</p>
-          </div>
-          <div class="card tight">
-            <span>&#8595;</span>
-            <p class="summary-label">Despesa paga</p>
-            <p class="summary-value font-mono" style="color:var(--rust)">${fmtBRL(t.expensePaid)}</p>
-            <p class="summary-sub">de ${fmtBRL(t.expenseAll)} previsto</p>
-          </div>
-        </div>
-        <div class="card" style="margin-top:10px;">
-          <p class="summary-label">Saldo realizado</p>
-          <p class="big-value font-mono" style="color:${saldoRealizado >= 0 ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(saldoRealizado)}</p>
-          <p class="small-note">Saldo previsto ao fim do mês: ${fmtBRL(saldoPrevisto)}</p>
-        </div>
-      </section>
-
-      <section>
-        <p class="eyebrow">Quanto do salário está comprometido — próximos 12 meses</p>
-        <div class="card" style="padding:0;overflow:hidden;">
-          ${projection.map(row => `
-            <div class="proj-row-v2">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;">
-                <span class="font-mono" style="font-size:12px;color:var(--muted)">${esc(monthLabelShort(row.m))}</span>
-                <span class="font-mono" style="font-size:12px;color:${pctColor(row.pct)}">${row.pct >= 999 ? 's/ receita' : row.pct + '%'}</span>
+      <div class="dash-grid">
+        <div class="dash-col">
+          <section>
+            <p class="eyebrow">Este mês</p>
+            <div class="grid2">
+              <div class="card tight">
+                <span>&#8593;</span>
+                <p class="summary-label">Receita confirmada</p>
+                <p class="summary-value font-mono" style="color:var(--teal)">${fmtBRL(t.incomeConfirmed)}</p>
+                <p class="summary-sub">de ${fmtBRL(t.incomeAll)} previsto</p>
               </div>
-              <div class="proj-bar-bg" style="margin:6px 0;"><div class="proj-bar-fill" style="width:${Math.min(row.pct,100)}%;background:${pctColor(row.pct)}"></div></div>
-              <p style="font-size:11px;color:var(--muted);margin:0;">${fmtBRL(row.exp)} comprometido de ${fmtBRL(row.inc)} previsto</p>
+              <div class="card tight">
+                <span>&#8595;</span>
+                <p class="summary-label">Despesa paga</p>
+                <p class="summary-value font-mono" style="color:var(--rust)">${fmtBRL(t.expensePaid)}</p>
+                <p class="summary-sub">de ${fmtBRL(t.expenseAll)} previsto</p>
+              </div>
             </div>
-          `).join('')}
+            <div class="card" style="margin-top:10px;">
+              <p class="summary-label">Saldo realizado</p>
+              <p class="big-value font-mono" style="color:${saldoRealizado >= 0 ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(saldoRealizado)}</p>
+              <p class="small-note">Saldo previsto ao fim do mês: ${fmtBRL(saldoPrevisto)}</p>
+            </div>
+          </section>
         </div>
-      </section>
+
+        <div class="dash-col">
+          <section>
+            <p class="eyebrow">Quanto do salário está comprometido — próximos 12 meses</p>
+            <div class="card" style="padding:0;overflow:hidden;">
+              ${projection.map(row => `
+                <div class="proj-row-v2">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                    <span class="font-mono" style="font-size:12px;color:var(--muted)">${esc(monthLabelShort(row.m))}</span>
+                    <span class="font-mono" style="font-size:12px;color:${pctColor(row.pct)}">${row.pct >= 999 ? 's/ receita' : row.pct + '%'}</span>
+                  </div>
+                  <div class="proj-bar-bg" style="margin:6px 0;"><div class="proj-bar-fill" style="width:${Math.min(row.pct,100)}%;background:${pctColor(row.pct)}"></div></div>
+                  <p style="font-size:11px;color:var(--muted);margin:0;">${fmtBRL(row.exp)} comprometido de ${fmtBRL(row.inc)} previsto</p>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -515,7 +540,7 @@ function renderTxRow(tx){
         `}
       </div>
       <div class="tx-actions">
-        <button class="status-btn" data-action="set-status" data-tx-id="${tx.id}" data-status="${confirmedLabel}"
+        <button class="status-btn ${isConfirmed?'stamped':''}" data-action="set-status" data-tx-id="${tx.id}" data-status="${confirmedLabel}"
           style="border-color:var(--teal); background:${isConfirmed?'var(--teal)':'transparent'}; color:${isConfirmed?'#fff':'var(--teal)'}">
           ${isIncome ? 'Recebido' : 'Pago'}
         </button>
@@ -794,7 +819,7 @@ function renderAnalises(){
   const topIncomeCat = incomeByCategory[0];
 
   return `
-    <div class="stack dash-grid">
+    <div class="stack wide">
       <section class="card tight" style="display:flex;flex-direction:column;gap:12px;">
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
@@ -832,50 +857,56 @@ function renderAnalises(){
         </div>
       </section>
 
-      <section>
-        <p class="eyebrow">Panorama do período (${nMeses} ${nMeses===1?'mês':'meses'})</p>
-        <div class="grid2">
-          <div class="card tight">
-            <p class="summary-label">Receita total</p>
-            <p class="summary-value font-mono" style="color:var(--teal)">${fmtBRL(totalIncome)}</p>
-            <p class="summary-sub">média de ${fmtBRL(totalIncome/nMeses)}/mês</p>
-          </div>
-          <div class="card tight">
-            <p class="summary-label">Despesa total</p>
-            <p class="summary-value font-mono" style="color:var(--rust)">${fmtBRL(totalExpense)}</p>
-            <p class="summary-sub">média de ${fmtBRL(totalExpense/nMeses)}/mês</p>
-          </div>
-        </div>
-        <div class="card" style="margin-top:10px;">
-          <p class="summary-label">Saldo do período</p>
-          <p class="big-value font-mono" style="color:${saldo>=0?'var(--teal)':'var(--rust)'}">${fmtBRL(saldo)}</p>
-          <p class="small-note">${poupanca===null ? 'Sem receita no período para calcular taxa de poupança.' : `Taxa de poupança: ${poupanca}% da receita`}</p>
-        </div>
-        ${topExpenseCat || topIncomeCat ? `
-          <div class="grid2" style="margin-top:10px;">
-            ${topIncomeCat ? `
+      <div class="dash-grid">
+        <div class="dash-col">
+          <section>
+            <p class="eyebrow">Panorama do período (${nMeses} ${nMeses===1?'mês':'meses'})</p>
+            <div class="grid2">
               <div class="card tight">
-                <p class="summary-label">Maior fonte de receita</p>
-                <p style="font-size:14px;font-weight:500;margin:4px 0 0;">${esc(topIncomeCat[0])}</p>
-                <p class="summary-sub font-mono">${fmtBRL(topIncomeCat[1])}</p>
+                <p class="summary-label">Receita total</p>
+                <p class="summary-value font-mono" style="color:var(--teal)">${fmtBRL(totalIncome)}</p>
+                <p class="summary-sub">média de ${fmtBRL(totalIncome/nMeses)}/mês</p>
               </div>
-            ` : '<div></div>'}
-            ${topExpenseCat ? `
               <div class="card tight">
-                <p class="summary-label">Maior categoria de despesa</p>
-                <p style="font-size:14px;font-weight:500;margin:4px 0 0;">${esc(topExpenseCat[0])}</p>
-                <p class="summary-sub font-mono">${fmtBRL(topExpenseCat[1])}</p>
+                <p class="summary-label">Despesa total</p>
+                <p class="summary-value font-mono" style="color:var(--rust)">${fmtBRL(totalExpense)}</p>
+                <p class="summary-sub">média de ${fmtBRL(totalExpense/nMeses)}/mês</p>
               </div>
-            ` : '<div></div>'}
-          </div>
-        ` : ''}
-      </section>
+            </div>
+            <div class="card" style="margin-top:10px;">
+              <p class="summary-label">Saldo do período</p>
+              <p class="big-value font-mono" style="color:${saldo>=0?'var(--teal)':'var(--rust)'}">${fmtBRL(saldo)}</p>
+              <p class="small-note">${poupanca===null ? 'Sem receita no período para calcular taxa de poupança.' : `Taxa de poupança: ${poupanca}% da receita`}</p>
+            </div>
+            ${topExpenseCat || topIncomeCat ? `
+              <div class="grid2" style="margin-top:10px;">
+                ${topIncomeCat ? `
+                  <div class="card tight">
+                    <p class="summary-label">Maior fonte de receita</p>
+                    <p style="font-size:14px;font-weight:500;margin:4px 0 0;">${esc(topIncomeCat[0])}</p>
+                    <p class="summary-sub font-mono">${fmtBRL(topIncomeCat[1])}</p>
+                  </div>
+                ` : '<div></div>'}
+                ${topExpenseCat ? `
+                  <div class="card tight">
+                    <p class="summary-label">Maior categoria de despesa</p>
+                    <p style="font-size:14px;font-weight:500;margin:4px 0 0;">${esc(topExpenseCat[0])}</p>
+                    <p class="summary-sub font-mono">${fmtBRL(topExpenseCat[1])}</p>
+                  </div>
+                ` : '<div></div>'}
+              </div>
+            ` : ''}
+          </section>
+          ${renderBreakdownCard('Composição da receita por categoria', incomeByCategory, totalIncome, 'var(--teal)')}
+          ${renderBreakdownCard('Composição da receita por pessoa', incomeByPerson, totalIncome, 'var(--teal)')}
+        </div>
 
-      ${renderBreakdownCard('Composição da receita por categoria', incomeByCategory, totalIncome, 'var(--teal)')}
-      ${renderBreakdownCard('Composição da receita por pessoa', incomeByPerson, totalIncome, 'var(--teal)')}
-      ${renderBreakdownCard('Composição da despesa por categoria', expenseByCategory, totalExpense, 'var(--rust)')}
-      ${renderBreakdownCard('Composição da despesa por pessoa', expenseByPerson, totalExpense, 'var(--rust)')}
-      ${renderBreakdownCard('Composição da despesa por forma de pagamento', expenseByPayment, totalExpense, 'var(--gold)')}
+        <div class="dash-col">
+          ${renderBreakdownCard('Composição da despesa por categoria', expenseByCategory, totalExpense, 'var(--rust)')}
+          ${renderBreakdownCard('Composição da despesa por pessoa', expenseByPerson, totalExpense, 'var(--rust)')}
+          ${renderBreakdownCard('Composição da despesa por forma de pagamento', expenseByPayment, totalExpense, 'var(--gold)')}
+        </div>
+      </div>
     </div>
   `;
 }
