@@ -196,60 +196,103 @@ function defaultData(){
 }
 
 let db = null;
-let docRef = null;
+let settingsRef = null;
+let cardsRef = null;
+let txRef = null;
+let saveOk = true;
+const loadedFlags = { settings: false, cards: false, transactions: false };
 
 function initFirebase(){
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
-  docRef = db.collection('households').doc(HOUSEHOLD_ID);
+  settingsRef = db.collection('households').doc(HOUSEHOLD_ID);
+  cardsRef = settingsRef.collection('cards');
+  txRef = settingsRef.collection('transactions');
 }
 
-function attachRealtimeListener(){
-  docRef.onSnapshot(
+function checkAllLoaded(){
+  if (loadedFlags.settings && loadedFlags.cards && loadedFlags.transactions) state.loaded = true;
+}
+
+function markSyncError(e){
+  console.error('Falha ao sincronizar com a nuvem', e);
+  saveOk = false;
+  render();
+}
+
+// Split an array of Firestore write operations into batches of at most 400
+// (Firestore's hard limit is 500 per batch — we stay comfortably under it).
+async function commitInChunks(ops){
+  for (let i = 0; i < ops.length; i += 400) {
+    const batch = db.batch();
+    ops.slice(i, i + 400).forEach(op => op(batch));
+    await batch.commit();
+  }
+}
+
+function attachRealtimeListeners(){
+  settingsRef.onSnapshot(
     async (snap) => {
       if (snap.exists) {
-        state.data = Object.assign(defaultData(), snap.data());
-        state.data.incomeCategories = sortCategories(state.data.incomeCategories);
-        state.data.expenseCategories = sortCategories(state.data.expenseCategories);
+        const s = snap.data();
+        const dd = defaultData();
+        state.data.people = s.people || dd.people;
+        state.data.incomeCategories = sortCategories(s.incomeCategories || dd.incomeCategories);
+        state.data.expenseCategories = sortCategories(s.expenseCategories || dd.expenseCategories);
       } else {
-        state.data = defaultData();
-        try { await docRef.set(state.data); } catch (e) { console.error('Falha ao criar documento inicial', e); }
+        const dd = defaultData();
+        state.data.people = dd.people;
+        state.data.incomeCategories = dd.incomeCategories;
+        state.data.expenseCategories = dd.expenseCategories;
+        try { await settingsRef.set({ people: dd.people, incomeCategories: dd.incomeCategories, expenseCategories: dd.expenseCategories }); }
+        catch (e) { console.error('Falha ao criar configurações iniciais', e); }
       }
-      state.loaded = true;
+      loadedFlags.settings = true;
       saveOk = true;
+      checkAllLoaded();
       render();
     },
-    (err) => {
-      console.error('Falha ao ouvir a nuvem', err);
-      if (!state.loaded) { state.data = defaultData(); state.loaded = true; }
-      saveOk = false;
-      render();
-    }
+    (err) => { loadedFlags.settings = true; checkAllLoaded(); markSyncError(err); }
   );
-}
 
-let saveOk = true;
-function saveData(){
-  if (!docRef) return;
-  docRef.set(state.data)
-    .then(() => { if (!saveOk) { saveOk = true; render(); } })
-    .catch((e) => { console.error('Falha ao salvar na nuvem', e); saveOk = false; render(); });
+  cardsRef.onSnapshot(
+    (snap) => {
+      state.data.cards = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      loadedFlags.cards = true;
+      saveOk = true;
+      checkAllLoaded();
+      render();
+    },
+    (err) => { loadedFlags.cards = true; checkAllLoaded(); markSyncError(err); }
+  );
+
+  txRef.onSnapshot(
+    (snap) => {
+      state.data.transactions = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      loadedFlags.transactions = true;
+      saveOk = true;
+      checkAllLoaded();
+      render();
+    },
+    (err) => { loadedFlags.transactions = true; checkAllLoaded(); markSyncError(err); }
+  );
 }
 
 /* ---------------------------------------------------------------
    State
 --------------------------------------------------------------- */
 const state = {
-  data: null,
+  data: defaultData(),
   loaded: false,
   tab: 'dashboard',
-  month: currentMonthKey(),
   filter: 'all',
+  lancamentosMonth: 'all',
+  cartoesMonth: currentMonthKey(),
   editingTxId: null,
   settingsOpen: false,
   newTxType: 'income',
   newRepeatMode: 'unica',
-  novaDraft: { categoria: null, descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false },
+  novaDraft: { categoria: null, mes: currentMonthKey(), descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false },
   analiseFiltros: { monthStart: addMonths(currentMonthKey(), -5), monthEnd: currentMonthKey(), category: 'all', person: 'all', payment: 'all' },
   dashboardFilter: (function(){ try { return localStorage.getItem('painelFiltroPessoa') || 'all'; } catch (e) { return 'all'; } })(),
   deleteRecurringModal: null
@@ -259,6 +302,7 @@ function captureNovaDraft(){
   const d = state.novaDraft;
   const el = (id) => document.getElementById(id);
   if (el('nova-categoria')) d.categoria = el('nova-categoria').value;
+  if (el('nova-mes')) d.mes = el('nova-mes').value;
   if (el('nova-descricao')) d.descricao = el('nova-descricao').value;
   if (el('nova-valor')) d.valor = el('nova-valor').value;
   if (el('nova-valor-total')) d.valorTotal = el('nova-valor-total').value;
@@ -270,10 +314,9 @@ function captureNovaDraft(){
 }
 
 function resetNovaDraft(){
-  state.novaDraft = { categoria: null, descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false };
+  state.novaDraft = { categoria: null, mes: currentMonthKey(), descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false };
 }
 
-function persistAndRender(){ render(); saveData(); }
 
 /* ---------------------------------------------------------------
    Computation helpers
@@ -315,11 +358,6 @@ function renderHeader(){
           <span class="glyph">&#9881;</span>
         </button>
       </div>
-      <div class="month-nav">
-        <button class="icon-btn" data-action="prev-month" aria-label="Mês anterior">&#8249;</button>
-        <span class="font-mono">${esc(monthLabel(state.month))}</span>
-        <button class="icon-btn" data-action="next-month" aria-label="Próximo mês">&#8250;</button>
-      </div>
       ${!saveOk ? '<p class="save-note" style="color:var(--rust)">Não foi possível sincronizar com a nuvem agora. Verifique sua conexão.</p>' : ''}
     </header>
   `;
@@ -332,7 +370,7 @@ function renderDashboard(){
   const d = state.data;
   if (state.dashboardFilter !== 'all' && !d.people.includes(state.dashboardFilter)) state.dashboardFilter = 'all';
   const tx = state.dashboardFilter === 'all' ? d.transactions : d.transactions.filter(t => t.person === state.dashboardFilter);
-  const t = monthTotals(tx, state.month);
+  const t = monthTotals(tx, currentMonthKey());
   const saldoRealizado = t.incomeConfirmed - t.expensePaid;
   const saldoPrevisto = t.incomeAll - t.expenseAll;
 
@@ -397,24 +435,49 @@ function renderDashboard(){
    Render: lançamentos
 --------------------------------------------------------------- */
 function renderLancamentos(){
+  const monthFilter = state.lancamentosMonth || 'all';
+  const distinctMonths = Array.from(new Set(state.data.transactions.map(t => t.month))).sort().reverse();
+
   const items = state.data.transactions
-    .filter(t => t.month === state.month)
+    .filter(t => monthFilter === 'all' || t.month === monthFilter)
     .filter(t => state.filter === 'all' || t.type === state.filter)
-    .sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+    .sort((a, b) => (b.month === a.month ? (a.createdAt||0) - (b.createdAt||0) : b.month.localeCompare(a.month)));
+
+  const groups = [];
+  items.forEach(tx => {
+    let g = groups[groups.length - 1];
+    if (!g || g.month !== tx.month) { g = { month: tx.month, items: [] }; groups.push(g); }
+    g.items.push(tx);
+  });
 
   return `
     <div class="stack" style="gap:12px;">
+      <div class="field">
+        <label style="font-size:11px;color:var(--muted);">Mês</label>
+        <select class="field-input" id="lanc-mes" onchange="onLancMonthChange()">
+          <option value="all" ${monthFilter==='all'?'selected':''}>Todos os meses</option>
+          ${distinctMonths.map(m => `<option value="${m}" ${monthFilter===m?'selected':''}>${esc(monthLabel(m))}</option>`).join('')}
+        </select>
+      </div>
       <div class="pill-row">
         <button class="pill ${state.filter==='all'?'active':''}" data-action="set-filter" data-filter="all">Todos</button>
         <button class="pill ${state.filter==='income'?'active':''}" data-action="set-filter" data-filter="income">Receitas</button>
         <button class="pill ${state.filter==='expense'?'active':''}" data-action="set-filter" data-filter="expense">Despesas</button>
       </div>
-      ${items.length === 0 ? `<p class="empty-note">Nada lançado em ${esc(monthLabel(state.month))} ainda.</p>` : ''}
-      <div class="stack" style="gap:8px;">
-        ${items.map(renderTxRow).join('')}
-      </div>
+      ${items.length === 0 ? `<p class="empty-note">${monthFilter==='all' ? 'Nenhum lançamento ainda.' : 'Nada lançado em ' + esc(monthLabel(monthFilter)) + '.'}</p>` : ''}
+      ${groups.map(g => `
+        ${monthFilter==='all' ? `<p class="eyebrow" style="margin-top:6px;">${esc(monthLabel(g.month))}</p>` : ''}
+        <div class="stack" style="gap:8px;">
+          ${g.items.map(renderTxRow).join('')}
+        </div>
+      `).join('')}
     </div>
   `;
+}
+
+function onLancMonthChange(){
+  state.lancamentosMonth = document.getElementById('lanc-mes').value;
+  render();
 }
 
 function renderTxRow(tx){
@@ -499,6 +562,11 @@ function renderNova(){
       </div>
 
       <div class="field">
+        <label>Mês de referência</label>
+        <input type="month" class="field-input" id="nova-mes" value="${esc(draft.mes || currentMonthKey())}">
+      </div>
+
+      <div class="field">
         <label>Descrição (opcional)</label>
         <input class="field-input" id="nova-descricao" placeholder="Ex: 13º salário, aluguel..." value="${esc(draft.descricao || '')}">
       </div>
@@ -547,7 +615,7 @@ function renderNova(){
           <input type="checkbox" id="nova-recorrente" style="width:16px;height:16px;" ${draft.recorrente ? 'checked' : ''}>
           <span style="font-size:14px;">Recorrente (repete pelos próximos 12 meses)</span>
         </label>
-        <p class="small-note" style="margin-top:-8px;">Vamos criar um lançamento pendente em ${esc(monthLabel(state.month))} e nos 11 meses seguintes. Você confirma mês a mês, e pode ajustar o valor quando ele mudar — o novo valor passa a valer para os meses futuros ainda não confirmados.</p>
+        <p class="small-note" style="margin-top:-8px;">Vamos criar um lançamento pendente em ${esc(monthLabel(draft.mes || currentMonthKey()))} e nos 11 meses seguintes. Você confirma mês a mês, e pode ajustar o valor quando ele mudar — o novo valor passa a valer para os meses futuros ainda não confirmados.</p>
       ` : `
         <div class="field">
           <label>Repetição</label>
@@ -558,10 +626,10 @@ function renderNova(){
           </div>
         </div>
         ${repeatMode === 'recorrente' ? `
-          <p class="small-note" style="margin-top:-8px;">Vamos criar um lançamento pendente em ${esc(monthLabel(state.month))} e nos 11 meses seguintes. Você confirma mês a mês, e pode ajustar o valor quando ele mudar — o novo valor passa a valer para os meses futuros ainda não confirmados.</p>
+          <p class="small-note" style="margin-top:-8px;">Vamos criar um lançamento pendente em ${esc(monthLabel(draft.mes || currentMonthKey()))} e nos 11 meses seguintes. Você confirma mês a mês, e pode ajustar o valor quando ele mudar — o novo valor passa a valer para os meses futuros ainda não confirmados.</p>
         ` : ''}
         ${repeatMode === 'parcelada' ? `
-          <p class="small-note" style="margin-top:-8px;">Vamos dividir o valor total pelo número de parcelas e lançar uma parcela em ${esc(monthLabel(state.month))} e em cada um dos meses seguintes, já como pendente.</p>
+          <p class="small-note" style="margin-top:-8px;">Vamos dividir o valor total pelo número de parcelas e lançar uma parcela em ${esc(monthLabel(draft.mes || currentMonthKey()))} e em cada um dos meses seguintes, já como pendente.</p>
         ` : ''}
       `}
 
@@ -577,7 +645,9 @@ function onParcelaPreviewChange(){
   const n = Number(document.getElementById('nova-parcelas').value);
   if (!total || !n || n < 2) { preview.textContent = 'Informe o valor total e o número de parcelas.'; return; }
   const amounts = splitInstallments(total, n);
-  preview.textContent = n + 'x de ' + fmtBRL(amounts[0]) + (amounts[0] !== amounts[n-1] ? ' (última parcela: ' + fmtBRL(amounts[n-1]) + ')' : '') + ' — a partir de ' + monthLabel(state.month) + '.';
+  const mesEl = document.getElementById('nova-mes');
+  const mesRef = (mesEl && mesEl.value) || currentMonthKey();
+  preview.textContent = n + 'x de ' + fmtBRL(amounts[0]) + (amounts[0] !== amounts[n-1] ? ' (última parcela: ' + fmtBRL(amounts[n-1]) + ')' : '') + ' — a partir de ' + monthLabel(mesRef) + '.';
 }
 
 function splitInstallments(total, n){
@@ -609,15 +679,20 @@ function onPaymentTypeChange(){
 --------------------------------------------------------------- */
 function renderCartoes(){
   const d = state.data;
+  const mes = state.cartoesMonth || currentMonthKey();
   return `
     <div class="stack" style="gap:14px;">
       <div class="card tight" style="display:flex;gap:8px;">
         <input class="field-input" style="margin:0;" id="novo-cartao-nome" placeholder="Nome do cartão (ex: Nubank Você)">
         <button class="btn-primary-sm" data-action="add-card" style="flex-shrink:0;">Adicionar</button>
       </div>
+      <div class="field">
+        <label style="font-size:11px;color:var(--muted);">Mês da fatura</label>
+        <input type="month" class="field-input" id="cartoes-mes" value="${mes}" onchange="onCartoesMonthChange()">
+      </div>
       ${d.cards.length === 0 ? '<p class="empty-note">Nenhum cartão cadastrado ainda.</p>' : ''}
       ${d.cards.map(card => {
-        const txs = d.transactions.filter(t => t.cardId === card.id && t.month === state.month);
+        const txs = d.transactions.filter(t => t.cardId === card.id && t.month === mes);
         const total = txs.reduce((a,t) => a + Number(t.amount||0), 0);
         const pending = txs.filter(t => t.status === 'pendente').reduce((a,t) => a + Number(t.amount||0), 0);
         return `
@@ -626,7 +701,7 @@ function renderCartoes(){
               <p style="font-weight:500;font-size:14px;margin:0;">${esc(card.name)}</p>
               <button data-action="remove-card" data-card-id="${card.id}" aria-label="Remover cartão" style="color:var(--muted)">&#128465;</button>
             </div>
-            <p class="small-note" style="margin-top:4px;">${esc(monthLabel(state.month))}</p>
+            <p class="small-note" style="margin-top:4px;">${esc(monthLabel(mes))}</p>
             <p class="big-value font-mono" style="margin-top:6px;">${fmtBRL(total)}</p>
             <p class="small-note" style="color:${pending>0?'var(--rust)':'var(--teal)'}">${pending>0 ? fmtBRL(pending) + ' ainda pendente' : 'Fatura em dia'}</p>
             ${pending>0 ? `<button class="primary-btn" style="margin-top:10px;" data-action="confirmar-fatura" data-card-id="${card.id}">Confirmar fatura paga</button>` : ''}
@@ -635,6 +710,11 @@ function renderCartoes(){
       }).join('')}
     </div>
   `;
+}
+
+function onCartoesMonthChange(){
+  state.cartoesMonth = document.getElementById('cartoes-mes').value;
+  render();
 }
 
 /* ---------------------------------------------------------------
@@ -969,8 +1049,6 @@ document.addEventListener('click', function(e){
   }
   const action = btn.dataset.action;
 
-  if (action === 'prev-month') { state.month = addMonths(state.month, -1); return render(); }
-  if (action === 'next-month') { state.month = addMonths(state.month, 1); return render(); }
   if (action === 'set-tab') { state.tab = btn.dataset.tab; state.editingTxId = null; return render(); }
   if (action === 'set-filter') { state.filter = btn.dataset.filter; return render(); }
   if (action === 'set-dashboard-filter') {
@@ -988,16 +1066,21 @@ document.addEventListener('click', function(e){
     const oldP2 = state.data.people[1];
     const p1 = document.getElementById('settings-p1').value.trim() || 'Você';
     const p2 = document.getElementById('settings-p2').value.trim() || 'Parceiro(a)';
-    state.data.people = [p1, p2];
-    if (oldP1 !== p1 || oldP2 !== p2) {
-      state.data.transactions = state.data.transactions.map(t => {
-        if (t.person === oldP1 && oldP1 !== p1) return Object.assign({}, t, { person: p1 });
-        if (t.person === oldP2 && oldP2 !== p2) return Object.assign({}, t, { person: p2 });
-        return t;
-      });
-    }
     state.settingsOpen = false;
-    return persistAndRender();
+    render();
+    settingsRef.set({ people: [p1, p2], incomeCategories: state.data.incomeCategories, expenseCategories: state.data.expenseCategories }, { merge: true })
+      .catch(markSyncError);
+    if (oldP1 !== p1 || oldP2 !== p2) {
+      const affected = state.data.transactions.filter(t =>
+        (t.person === oldP1 && oldP1 !== p1) || (t.person === oldP2 && oldP2 !== p2)
+      );
+      const ops = affected.map(t => (batch) => {
+        const newPerson = t.person === oldP1 ? p1 : p2;
+        batch.update(txRef.doc(t.id), { person: newPerson });
+      });
+      commitInChunks(ops).catch(markSyncError);
+    }
+    return;
   }
 
   if (action === 'add-cat') {
@@ -1007,10 +1090,10 @@ document.addEventListener('click', function(e){
     const val = input.value.trim();
     if (!val) return;
     const key = type === 'income' ? 'incomeCategories' : 'expenseCategories';
-    if (!state.data[key].includes(val)) state.data[key].push(val);
-    state.data[key] = sortCategories(state.data[key]);
+    const updated = sortCategories(state.data[key].includes(val) ? state.data[key] : [...state.data[key], val]);
     input.value = '';
-    return persistAndRender();
+    settingsRef.set({ [key]: updated }, { merge: true }).catch(markSyncError);
+    return;
   }
 
   if (action === 'del-cat') {
@@ -1018,8 +1101,9 @@ document.addEventListener('click', function(e){
     const cat = btn.dataset.cat;
     const key = type === 'income' ? 'incomeCategories' : 'expenseCategories';
     if (state.data[key].length <= 1) { alert('Mantenha ao menos uma categoria.'); return; }
-    state.data[key] = state.data[key].filter(c => c !== cat);
-    return persistAndRender();
+    const updated = state.data[key].filter(c => c !== cat);
+    settingsRef.set({ [key]: updated }, { merge: true }).catch(markSyncError);
+    return;
   }
 
   if (action === 'export-data') {
@@ -1053,6 +1137,7 @@ document.addEventListener('click', function(e){
 
   if (action === 'submit-nova') {
     const category = document.getElementById('nova-categoria').value;
+    const mesRef = document.getElementById('nova-mes').value || currentMonthKey();
     const description = document.getElementById('nova-descricao').value.trim();
     const person = document.getElementById('nova-responsavel').dataset.selected || state.data.people[0];
     const type = state.newTxType;
@@ -1075,6 +1160,7 @@ document.addEventListener('click', function(e){
 
     const groupId = uid();
     const base = Date.now();
+    const newDocs = [];
 
     if (repeatMode === 'parcelada') {
       const total = Number(document.getElementById('nova-valor-total').value);
@@ -1083,21 +1169,15 @@ document.addEventListener('click', function(e){
       if (isNaN(n) || n < 2) { alert('Informe em quantas parcelas foi dividido (2 ou mais).'); return; }
       const amounts = splitInstallments(total, n);
       for (let i = 0; i < n; i++) {
-        state.data.transactions.push({
+        newDocs.push({
           id: uid(),
-          groupId,
-          type,
-          category,
+          groupId, type, category,
           description: description ? (description + ' · parcela ' + (i+1) + '/' + n) : ('parcela ' + (i+1) + '/' + n),
           amount: amounts[i],
-          month: addMonths(state.month, i),
+          month: addMonths(mesRef, i),
           recurring: false,
           installment: { index: i + 1, total: n, totalAmount: total },
-          person,
-          status: 'pendente',
-          createdAt: base + i,
-          paymentType,
-          cardId
+          person, status: 'pendente', createdAt: base + i, paymentType, cardId
         });
       }
     } else {
@@ -1106,27 +1186,26 @@ document.addEventListener('click', function(e){
       const recurring = repeatMode === 'recorrente';
       const span = recurring ? 12 : 1;
       for (let i = 0; i < span; i++) {
-        state.data.transactions.push({
+        newDocs.push({
           id: uid(),
-          groupId,
-          type,
-          category,
-          description,
-          amount,
-          month: addMonths(state.month, i),
-          recurring,
-          person,
-          status: 'pendente',
-          createdAt: base + i,
+          groupId, type, category, description, amount,
+          month: addMonths(mesRef, i),
+          recurring, person, status: 'pendente', createdAt: base + i,
           paymentType: !isIncome ? paymentType : null,
           cardId: !isIncome ? cardId : null
         });
       }
     }
+
     state.newRepeatMode = 'unica';
     resetNovaDraft();
     state.tab = 'lancamentos';
-    return persistAndRender();
+    render();
+    commitInChunks(newDocs.map(d => (batch) => {
+      const data = Object.assign({}, d); delete data.id;
+      batch.set(txRef.doc(d.id), data);
+    })).catch(markSyncError);
+    return;
   }
 
   if (action === 'edit-amount') { state.editingTxId = btn.dataset.txId; return render(); }
@@ -1139,20 +1218,19 @@ document.addEventListener('click', function(e){
     if (isNaN(newAmount) || newAmount < 0) return;
     const target = state.data.transactions.find(t => t.id === txId);
     if (!target) return;
-    state.data.transactions = state.data.transactions.map(t => {
-      if (t.groupId !== target.groupId) return t;
-      if (t.id === target.id) return Object.assign({}, t, { amount: newAmount });
-      if (t.recurring && t.month > target.month && t.status === 'pendente') return Object.assign({}, t, { amount: newAmount });
-      return t;
-    });
+    const affected = state.data.transactions.filter(t =>
+      t.groupId === target.groupId && (t.id === target.id || (t.recurring && t.month > target.month && t.status === 'pendente'))
+    );
     state.editingTxId = null;
-    return persistAndRender();
+    render();
+    commitInChunks(affected.map(t => (batch) => batch.update(txRef.doc(t.id), { amount: newAmount }))).catch(markSyncError);
+    return;
   }
 
   if (action === 'set-status') {
     const txId = btn.dataset.txId, status = btn.dataset.status;
-    state.data.transactions = state.data.transactions.map(t => t.id === txId ? Object.assign({}, t, { status }) : t);
-    return persistAndRender();
+    txRef.doc(txId).update({ status }).catch(markSyncError);
+    return;
   }
 
   if (action === 'delete-tx') {
@@ -1163,23 +1241,25 @@ document.addEventListener('click', function(e){
       return render();
     }
     if (!confirm('Excluir este lançamento?')) return;
-    state.data.transactions = state.data.transactions.filter(t => t.id !== tx.id);
-    return persistAndRender();
+    txRef.doc(tx.id).delete().catch(markSyncError);
+    return;
   }
 
   if (action === 'confirm-delete-recurring') {
     const mode = btn.dataset.mode;
     const tx = state.data.transactions.find(t => t.id === btn.dataset.txId);
     state.deleteRecurringModal = null;
-    if (!tx || mode === 'cancel') return render();
+    render();
+    if (!tx || mode === 'cancel') return;
     if (mode === 'all') {
-      state.data.transactions = state.data.transactions.filter(t =>
-        !(t.groupId === tx.groupId && t.month >= tx.month && (t.id === tx.id || t.status === 'pendente'))
+      const toDelete = state.data.transactions.filter(t =>
+        t.groupId === tx.groupId && t.month >= tx.month && (t.id === tx.id || t.status === 'pendente')
       );
+      commitInChunks(toDelete.map(t => (batch) => batch.delete(txRef.doc(t.id)))).catch(markSyncError);
     } else if (mode === 'month') {
-      state.data.transactions = state.data.transactions.filter(t => t.id !== tx.id);
+      txRef.doc(tx.id).delete().catch(markSyncError);
     }
-    return persistAndRender();
+    return;
   }
 
   if (action === 'close-delete-recurring-backdrop' && e.target === btn) {
@@ -1191,32 +1271,33 @@ document.addEventListener('click', function(e){
     const tx = state.data.transactions.find(t => t.id === btn.dataset.txId);
     if (!tx) return;
     if (!confirm('Isso remove as parcelas futuras ainda pendentes desta compra. Continuar?')) return;
-    state.data.transactions = state.data.transactions.filter(t =>
-      !(t.groupId === tx.groupId && t.installment && t.status === 'pendente' && t.month >= tx.month)
+    const toDelete = state.data.transactions.filter(t =>
+      t.groupId === tx.groupId && t.installment && t.status === 'pendente' && t.month >= tx.month
     );
-    return persistAndRender();
+    commitInChunks(toDelete.map(t => (batch) => batch.delete(txRef.doc(t.id)))).catch(markSyncError);
+    return;
   }
 
   if (action === 'add-card') {
     const input = document.getElementById('novo-cartao-nome');
     const name = input.value.trim();
     if (!name) return;
-    state.data.cards.push({ id: uid(), name });
     input.value = '';
-    return persistAndRender();
+    cardsRef.doc(uid()).set({ name }).catch(markSyncError);
+    return;
   }
 
   if (action === 'remove-card') {
-    state.data.cards = state.data.cards.filter(c => c.id !== btn.dataset.cardId);
-    return persistAndRender();
+    cardsRef.doc(btn.dataset.cardId).delete().catch(markSyncError);
+    return;
   }
 
   if (action === 'confirmar-fatura') {
     const cardId = btn.dataset.cardId;
-    state.data.transactions = state.data.transactions.map(t =>
-      (t.cardId === cardId && t.month === state.month && t.status === 'pendente') ? Object.assign({}, t, { status: 'pago' }) : t
-    );
-    return persistAndRender();
+    const mes = state.cartoesMonth || currentMonthKey();
+    const toUpdate = state.data.transactions.filter(t => t.cardId === cardId && t.month === mes && t.status === 'pendente');
+    commitInChunks(toUpdate.map(t => (batch) => batch.update(txRef.doc(t.id), { status: 'pago' }))).catch(markSyncError);
+    return;
   }
 });
 
@@ -1224,16 +1305,40 @@ document.getElementById('import-file-input').addEventListener('change', function
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(){
+  reader.onload = async function(){
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || !Array.isArray(parsed.transactions)) throw new Error('formato inválido');
       if (!confirm('Isso vai substituir os dados atuais na nuvem pelos do arquivo importado, para todo mundo que acessa este app. Continuar?')) return;
-      state.data = Object.assign(defaultData(), parsed);
-      state.data.incomeCategories = sortCategories(state.data.incomeCategories);
-      state.data.expenseCategories = sortCategories(state.data.expenseCategories);
-      persistAndRender();
+
+      const dd = defaultData();
+      const people = parsed.people || dd.people;
+      const incomeCategories = sortCategories(parsed.incomeCategories || dd.incomeCategories);
+      const expenseCategories = sortCategories(parsed.expenseCategories || dd.expenseCategories);
+      const cards = Array.isArray(parsed.cards) ? parsed.cards : [];
+      const transactions = parsed.transactions;
+
+      const oldCardIds = state.data.cards.map(c => c.id);
+      const oldTxIds = state.data.transactions.map(t => t.id);
+
+      const ops = [];
+      ops.push((batch) => batch.set(settingsRef, { people, incomeCategories, expenseCategories }, { merge: true }));
+      oldCardIds.forEach(id => ops.push((batch) => batch.delete(cardsRef.doc(id))));
+      oldTxIds.forEach(id => ops.push((batch) => batch.delete(txRef.doc(id))));
+      cards.forEach(c => {
+        const id = c.id || uid();
+        const data = Object.assign({}, c); delete data.id;
+        ops.push((batch) => batch.set(cardsRef.doc(id), data));
+      });
+      transactions.forEach(t => {
+        const id = t.id || uid();
+        const data = Object.assign({}, t); delete data.id;
+        ops.push((batch) => batch.set(txRef.doc(id), data));
+      });
+
+      await commitInChunks(ops);
     } catch (err) {
+      console.error(err);
       alert('Não foi possível importar este arquivo. Verifique se é um export válido do Contas a Dois.');
     }
   };
@@ -1244,7 +1349,7 @@ document.getElementById('import-file-input').addEventListener('change', function
 render();
 if (FIREBASE_CONFIGURED) {
   initFirebase();
-  attachRealtimeListener();
+  attachRealtimeListeners();
 }
 </script>
 </body>
