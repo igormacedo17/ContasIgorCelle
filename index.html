@@ -752,6 +752,7 @@ function onPaymentTypeChange(){
 function renderCartoes(){
   const d = state.data;
   const mes = state.cartoesMonth || currentMonthKey();
+  const months12 = Array.from({length:12}, (_, i) => addMonths(currentMonthKey(), i));
   return `
     <div class="stack" style="gap:14px;">
       <div class="card tight" style="display:flex;gap:8px;">
@@ -759,7 +760,7 @@ function renderCartoes(){
         <button class="btn-primary-sm" data-action="add-card" style="flex-shrink:0;">Adicionar</button>
       </div>
       <div class="field">
-        <label style="font-size:11px;color:var(--muted);">Mês da fatura</label>
+        <label style="font-size:11px;color:var(--muted);">Mês da fatura (para confirmar pagamento)</label>
         <input type="month" class="field-input" id="cartoes-mes" value="${mes}" onchange="onCartoesMonthChange()">
       </div>
       ${d.cards.length === 0 ? '<p class="empty-note">Nenhum cartão cadastrado ainda.</p>' : ''}
@@ -767,6 +768,13 @@ function renderCartoes(){
         const txs = d.transactions.filter(t => t.cardId === card.id && t.month === mes);
         const total = txs.reduce((a,t) => a + Number(t.amount||0), 0);
         const pending = txs.filter(t => t.status === 'pendente').reduce((a,t) => a + Number(t.amount||0), 0);
+
+        const proj = months12.map(m => {
+          const mTxs = d.transactions.filter(t => t.cardId === card.id && t.month === m);
+          return { m, total: mTxs.reduce((a,t) => a + Number(t.amount||0), 0) };
+        });
+        const maxProj = Math.max(1, ...proj.map(p => p.total));
+
         return `
           <div class="card-item">
             <div class="card-item-top">
@@ -777,6 +785,17 @@ function renderCartoes(){
             <p class="big-value font-mono" style="margin-top:6px;">${fmtBRL(total)}</p>
             <p class="small-note" style="color:${pending>0?'var(--rust)':'var(--teal)'}">${pending>0 ? fmtBRL(pending) + ' ainda pendente' : 'Fatura em dia'}</p>
             ${pending>0 ? `<button class="primary-btn" style="margin-top:10px;" data-action="confirmar-fatura" data-card-id="${card.id}">Confirmar fatura paga</button>` : ''}
+
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(28,43,51,0.08);">
+              <p class="eyebrow" style="margin:0 0 8px;">Próximas 12 faturas</p>
+              ${proj.map((p, i) => `
+                <div style="display:flex;align-items:center;gap:8px;padding:4px 0;${i>0?'border-top:1px solid rgba(28,43,51,0.05);':''}">
+                  <span class="font-mono" style="font-size:11px;color:var(--muted);width:44px;flex-shrink:0;">${esc(monthLabelShort(p.m))}</span>
+                  <div class="proj-bar-bg" style="height:6px;"><div class="proj-bar-fill" style="height:6px;width:${(p.total/maxProj*100)}%;background:var(--gold);"></div></div>
+                  <span class="font-mono" style="font-size:11px;width:76px;text-align:right;flex-shrink:0;">${fmtBRL(p.total)}</span>
+                </div>
+              `).join('')}
+            </div>
           </div>
         `;
       }).join('')}
@@ -1222,7 +1241,20 @@ document.addEventListener('click', function(e){
   }
 
   if (action === 'set-new-type') { captureNovaDraft(); state.newTxType = btn.dataset.type; state.newRepeatMode = 'unica'; return render(); }
-  if (action === 'select-repeat') { captureNovaDraft(); state.newRepeatMode = btn.dataset.mode; return render(); }
+  if (action === 'select-repeat') {
+    captureNovaDraft();
+    const newMode = btn.dataset.mode;
+    if (newMode === 'parcelada' && !state.novaDraft.valorTotal && state.novaDraft.valor) {
+      state.novaDraft.valorTotal = state.novaDraft.valor;
+      state.novaDraft.valor = '';
+    }
+    if (newMode !== 'parcelada' && !state.novaDraft.valor && state.novaDraft.valorTotal) {
+      state.novaDraft.valor = state.novaDraft.valorTotal;
+      state.novaDraft.valorTotal = '';
+    }
+    state.newRepeatMode = newMode;
+    return render();
+  }
 
   if (action === 'submit-nova') {
     const category = document.getElementById('nova-categoria').value;
