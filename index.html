@@ -400,20 +400,33 @@ function renderHeader(){
 /* ---------------------------------------------------------------
    Render: dashboard
 --------------------------------------------------------------- */
+function cumulativeRealizado(tx, uptoMonth){
+  const inc = tx.filter(t => t.type === 'income' && t.month <= uptoMonth && t.status === 'recebido').reduce((a,t) => a + Number(t.amount||0), 0);
+  const exp = tx.filter(t => t.type === 'expense' && t.month <= uptoMonth && t.status === 'pago').reduce((a,t) => a + Number(t.amount||0), 0);
+  return inc - exp;
+}
+function cumulativePrevisto(tx, uptoMonth){
+  const inc = tx.filter(t => t.type === 'income' && t.month <= uptoMonth).reduce((a,t) => a + Number(t.amount||0), 0);
+  const exp = tx.filter(t => t.type === 'expense' && t.month <= uptoMonth).reduce((a,t) => a + Number(t.amount||0), 0);
+  return inc - exp;
+}
+
 function renderDashboard(){
   const d = state.data;
   if (state.dashboardFilter !== 'all' && !d.people.includes(state.dashboardFilter)) state.dashboardFilter = 'all';
   const tx = state.dashboardFilter === 'all' ? d.transactions : d.transactions.filter(t => t.person === state.dashboardFilter);
   const t = monthTotals(tx, currentMonthKey());
-  const saldoRealizado = t.incomeConfirmed - t.expensePaid;
-  const saldoPrevisto = t.incomeAll - t.expenseAll;
+  const saldoDoMesRealizado = t.incomeConfirmed - t.expensePaid;
+  const saldoDoMesPrevisto = t.incomeAll - t.expenseAll;
+  const saldoAcumuladoRealizado = cumulativeRealizado(tx, currentMonthKey());
+  const saldoAcumuladoPrevisto = cumulativePrevisto(tx, currentMonthKey());
 
   const months = Array.from({length:12}, (_, i) => addMonths(currentMonthKey(), i));
   const projection = months.map(m => {
     const inc = sumFor(tx, m, 'income');
     const exp = sumFor(tx, m, 'expense');
     const pct = inc > 0 ? Math.round((exp/inc)*100) : (exp > 0 ? 999 : 0);
-    return { m, inc, exp, pct, saldo: inc - exp };
+    return { m, inc, exp, pct, saldoDoMes: inc - exp, saldoAcumulado: cumulativePrevisto(tx, m) };
   });
 
   return `
@@ -441,17 +454,26 @@ function renderDashboard(){
                 <p class="summary-sub">de ${fmtBRL(t.expenseAll)} previsto</p>
               </div>
             </div>
-            <div class="card" style="margin-top:10px;">
-              <p class="summary-label">Saldo realizado</p>
-              <p class="big-value font-mono" style="color:${saldoRealizado >= 0 ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(saldoRealizado)}</p>
-              <p class="small-note">Saldo previsto ao fim do mês: ${fmtBRL(saldoPrevisto)}</p>
+            <div class="grid2" style="margin-top:10px;">
+              <div class="card tight">
+                <p class="summary-label">Saldo do mês</p>
+                <p class="summary-value font-mono" style="color:${saldoDoMesRealizado >= 0 ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(saldoDoMesRealizado)}</p>
+                <p class="summary-sub">previsto: ${fmtBRL(saldoDoMesPrevisto)}</p>
+              </div>
+              <div class="card tight">
+                <p class="summary-label">Saldo acumulado</p>
+                <p class="summary-value font-mono" style="color:${saldoAcumuladoRealizado >= 0 ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(saldoAcumuladoRealizado)}</p>
+                <p class="summary-sub">previsto: ${fmtBRL(saldoAcumuladoPrevisto)}</p>
+              </div>
             </div>
+            <p class="small-note" style="margin-top:8px;">Saldo do mês = receitas − despesas deste mês. Saldo acumulado = saldo do mês + saldo acumulado do mês anterior (soma tudo desde o início).</p>
           </section>
         </div>
 
         <div class="dash-col">
           <section>
             <p class="eyebrow">Quanto do salário está comprometido — próximos 12 meses</p>
+            <p class="small-note" style="margin-top:-6px;">Cada mês mostra o saldo daquele mês isoladamente e o saldo acumulado até ali.</p>
             <div class="card" style="padding:0;overflow:hidden;">
               ${projection.map(row => `
                 <div class="proj-row-v2">
@@ -460,9 +482,10 @@ function renderDashboard(){
                     <span class="font-mono" style="font-size:12px;color:${pctColor(row.pct)}">${row.pct >= 999 ? 's/ receita' : row.pct + '%'}</span>
                   </div>
                   <div class="proj-bar-bg" style="margin:6px 0;"><div class="proj-bar-fill" style="width:${Math.min(row.pct,100)}%;background:${pctColor(row.pct)}"></div></div>
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-                    <p style="font-size:11px;color:var(--muted);margin:0;">${fmtBRL(row.exp)} comprometido de ${fmtBRL(row.inc)} previsto</p>
-                    <p class="font-mono" style="font-size:11px;margin:0;flex-shrink:0;color:${row.saldo >= 0 ? 'var(--teal)' : 'var(--rust)'}">${row.saldo >= 0 ? '+' : ''}${fmtBRL(row.saldo)}</p>
+                  <p style="font-size:11px;color:var(--muted);margin:0;">${fmtBRL(row.exp)} comprometido de ${fmtBRL(row.inc)} previsto</p>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px;">
+                    <span style="font-size:10px;color:var(--muted);">Saldo do mês <b class="font-mono" style="color:${row.saldoDoMes >= 0 ? 'var(--teal)' : 'var(--rust)'};font-weight:500;">${row.saldoDoMes >= 0 ? '+' : ''}${fmtBRL(row.saldoDoMes)}</b></span>
+                    <span style="font-size:10px;color:var(--muted);">Acumulado <b class="font-mono" style="color:${row.saldoAcumulado >= 0 ? 'var(--teal)' : 'var(--rust)'};font-weight:500;">${row.saldoAcumulado >= 0 ? '+' : ''}${fmtBRL(row.saldoAcumulado)}</b></span>
                   </div>
                 </div>
               `).join('')}
