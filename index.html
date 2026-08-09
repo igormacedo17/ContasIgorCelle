@@ -48,6 +48,16 @@
   .dash-grid { display: flex; flex-direction: column; gap: 20px; }
   .dash-col { display: flex; flex-direction: column; gap: 20px; }
   .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin: 0 0 10px; padding-left: 10px; border-left: 2px solid var(--teal); }
+  .month-group-header {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 8px 4px; margin-top: 4px; border-radius: 8px;
+    transition: background 0.15s ease;
+  }
+  .month-group-header:hover { background: rgba(28,43,51,0.04); }
+  .month-group-header .eyebrow { margin: 0; flex-shrink: 0; }
+  .month-group-header .chevron { font-size: 10px; color: var(--muted); transition: transform 0.15s ease; display: inline-block; }
+  .month-group-header .chevron.open { transform: rotate(90deg); }
+  .month-group-summary { margin-left: auto; font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
 
   .card { background: var(--card); border-radius: 14px; padding: 16px; border: 1px solid rgba(28,43,51,0.06); box-shadow: 0 1px 2px rgba(28,43,51,0.03), 0 6px 16px rgba(28,43,51,0.04); }
   .card.tight { padding: 14px; }
@@ -306,6 +316,7 @@ const state = {
   tab: 'dashboard',
   filter: 'all',
   lancamentosMonth: 'all',
+  lancamentosCollapsed: {},
   cartoesMonth: currentMonthKey(),
   editingTxId: null,
   settingsOpen: false,
@@ -493,12 +504,24 @@ function renderLancamentos(){
         <button class="pill ${state.filter==='expense'?'active':''}" data-action="set-filter" data-filter="expense">Despesas</button>
       </div>
       ${items.length === 0 ? `<p class="empty-note">${monthFilter==='all' ? 'Nenhum lançamento ainda.' : 'Nada lançado em ' + esc(monthLabel(monthFilter)) + '.'}</p>` : ''}
-      ${groups.map(g => `
-        ${monthFilter==='all' ? `<p class="eyebrow" style="margin-top:6px;">${esc(monthLabel(g.month))}</p>` : ''}
-        <div class="stack" style="gap:8px;">
-          ${g.items.map(renderTxRow).join('')}
-        </div>
-      `).join('')}
+      ${groups.map(g => {
+        if (monthFilter !== 'all') {
+          return `<div class="stack" style="gap:8px;">${g.items.map(renderTxRow).join('')}</div>`;
+        }
+        const collapsed = !!state.lancamentosCollapsed[g.month];
+        const inc = g.items.filter(t => t.type === 'income').reduce((a,t) => a + Number(t.amount||0), 0);
+        const exp = g.items.filter(t => t.type === 'expense').reduce((a,t) => a + Number(t.amount||0), 0);
+        return `
+          <button class="month-group-header" data-action="toggle-month-group" data-month="${g.month}">
+            <span class="chevron ${collapsed?'':'open'}">&#9656;</span>
+            <span class="eyebrow" style="margin:0;">${esc(monthLabel(g.month))}</span>
+            <span class="month-group-summary font-mono">
+              ${g.items.length} ${g.items.length===1?'lançamento':'lançamentos'}${collapsed ? ' · ' + fmtBRL(inc - exp) : ''}
+            </span>
+          </button>
+          ${!collapsed ? `<div class="stack" style="gap:8px;margin-bottom:4px;">${g.items.map(renderTxRow).join('')}</div>` : ''}
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -1085,6 +1108,11 @@ document.addEventListener('click', function(e){
 
   if (action === 'set-tab') { state.tab = btn.dataset.tab; state.editingTxId = null; return render(); }
   if (action === 'set-filter') { state.filter = btn.dataset.filter; return render(); }
+  if (action === 'toggle-month-group') {
+    const m = btn.dataset.month;
+    state.lancamentosCollapsed[m] = !state.lancamentosCollapsed[m];
+    return render();
+  }
   if (action === 'set-dashboard-filter') {
     state.dashboardFilter = btn.dataset.filter;
     try { localStorage.setItem('painelFiltroPessoa', state.dashboardFilter); } catch (e) { /* ignore */ }
