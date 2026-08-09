@@ -541,6 +541,12 @@ function renderLancamentos(){
         ${[...d.people, 'Ambos'].map(p => `<button class="pill ${personFilter===p?'active':''}" data-action="set-lanc-person" data-person="${esc(p)}">${esc(p)}</button>`).join('')}
       </div>
       ${items.length === 0 ? `<p class="empty-note">${monthFilter==='all' ? 'Nenhum lançamento ainda.' : 'Nada lançado em ' + esc(monthLabel(monthFilter)) + '.'}</p>` : ''}
+      ${monthFilter === 'all' && groups.length > 1 ? `
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" style="flex:1;font-size:12px;padding:8px 0;" data-action="expand-all-months">Expandir tudo</button>
+          <button class="btn-secondary" style="flex:1;font-size:12px;padding:8px 0;" data-action="collapse-all-months">Recolher tudo</button>
+        </div>
+      ` : ''}
       ${groups.map(g => {
         if (monthFilter !== 'all') {
           return `<div class="stack" style="gap:8px;">${g.items.map(renderTxRow).join('')}</div>`;
@@ -869,6 +875,12 @@ function renderCartoes(){
         <input type="month" class="field-input" id="cartoes-mes" value="${mes}" onchange="onCartoesMonthChange()">
       </div>
       ${d.cards.length === 0 ? '<p class="empty-note">Nenhum cartão cadastrado ainda.</p>' : ''}
+      ${d.cards.length > 1 ? `
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" style="flex:1;font-size:12px;padding:8px 0;" data-action="expand-all-cards">Expandir tudo</button>
+          <button class="btn-secondary" style="flex:1;font-size:12px;padding:8px 0;" data-action="collapse-all-cards">Recolher tudo</button>
+        </div>
+      ` : ''}
       ${d.cards.map(card => {
         const collapsed = !!state.cartoesCollapsed[card.id];
         const editing = state.editingCardId === card.id;
@@ -1301,6 +1313,11 @@ document.addEventListener('click', function(e){
     state.lancamentosCollapsed[m] = !state.lancamentosCollapsed[m];
     return render();
   }
+  if (action === 'expand-all-months') { state.lancamentosCollapsed = {}; return render(); }
+  if (action === 'collapse-all-months') {
+    Array.from(new Set(state.data.transactions.map(t => t.month))).forEach(m => { state.lancamentosCollapsed[m] = true; });
+    return render();
+  }
   if (action === 'set-lanc-person') { state.lancamentosPerson = btn.dataset.person; return render(); }
   if (action === 'set-dashboard-filter') {
     state.dashboardFilter = btn.dataset.filter;
@@ -1608,6 +1625,11 @@ document.addEventListener('click', function(e){
   if (action === 'toggle-card-collapse') {
     const id = btn.dataset.cardId;
     state.cartoesCollapsed[id] = !state.cartoesCollapsed[id];
+    return render();
+  }
+  if (action === 'expand-all-cards') { state.cartoesCollapsed = {}; return render(); }
+  if (action === 'collapse-all-cards') {
+    state.data.cards.forEach(c => { state.cartoesCollapsed[c.id] = true; });
     return render();
   }
 
