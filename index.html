@@ -320,6 +320,9 @@ const state = {
   filter: 'all',
   lancamentosMonth: 'all',
   lancamentosCollapsed: {},
+  lancamentosPerson: 'all',
+  cartoesCollapsed: {},
+  editingCardId: null,
   cartoesMonth: currentMonthKey(),
   editingTxId: null,
   settingsOpen: false,
@@ -501,12 +504,15 @@ function renderDashboard(){
    Render: lançamentos
 --------------------------------------------------------------- */
 function renderLancamentos(){
+  const d = state.data;
   const monthFilter = state.lancamentosMonth || 'all';
-  const distinctMonths = Array.from(new Set(state.data.transactions.map(t => t.month))).sort().reverse();
+  const personFilter = state.lancamentosPerson || 'all';
+  const distinctMonths = Array.from(new Set(d.transactions.map(t => t.month))).sort().reverse();
 
-  const items = state.data.transactions
+  const items = d.transactions
     .filter(t => monthFilter === 'all' || t.month === monthFilter)
     .filter(t => state.filter === 'all' || t.type === state.filter)
+    .filter(t => personFilter === 'all' || t.person === personFilter)
     .sort((a, b) => (b.month === a.month ? (a.createdAt||0) - (b.createdAt||0) : a.month.localeCompare(b.month)));
 
   const groups = [];
@@ -529,6 +535,10 @@ function renderLancamentos(){
         <button class="pill ${state.filter==='all'?'active':''}" data-action="set-filter" data-filter="all">Todos</button>
         <button class="pill ${state.filter==='income'?'active':''}" data-action="set-filter" data-filter="income">Receitas</button>
         <button class="pill ${state.filter==='expense'?'active':''}" data-action="set-filter" data-filter="expense">Despesas</button>
+      </div>
+      <div class="pill-row">
+        <button class="pill ${personFilter==='all'?'active':''}" data-action="set-lanc-person" data-person="all">Todos</button>
+        ${[...d.people, 'Ambos'].map(p => `<button class="pill ${personFilter===p?'active':''}" data-action="set-lanc-person" data-person="${esc(p)}">${esc(p)}</button>`).join('')}
       </div>
       ${items.length === 0 ? `<p class="empty-note">${monthFilter==='all' ? 'Nenhum lançamento ainda.' : 'Nada lançado em ' + esc(monthLabel(monthFilter)) + '.'}</p>` : ''}
       ${groups.map(g => {
@@ -559,18 +569,76 @@ function onLancMonthChange(){
 }
 
 function renderTxRow(tx){
+  const d = state.data;
   const isIncome = tx.type === 'income';
   const confirmedLabel = isIncome ? 'recebido' : 'pago';
   const deniedLabel = isIncome ? 'nao_recebido' : 'nao_pago';
   const isConfirmed = tx.status === confirmedLabel;
   const isDenied = tx.status === deniedLabel;
-  const card = tx.cardId ? state.data.cards.find(c => c.id === tx.cardId) : null;
+  const card = tx.cardId ? d.cards.find(c => c.id === tx.cardId) : null;
   const editing = state.editingTxId === tx.id;
 
   const subParts = [tx.person];
   if (!isIncome && tx.paymentType) subParts.push(paymentLabel(tx.paymentType, card));
   if (tx.recurring) subParts.push('recorrente');
   if (tx.installment) subParts.push('parcela ' + tx.installment.index + '/' + tx.installment.total);
+
+  if (editing) {
+    const categories = isIncome ? d.incomeCategories : d.expenseCategories;
+    const people = [...d.people, 'Ambos'];
+    return `
+      <div class="tx-row" data-tx-id="${tx.id}">
+        <div class="field" style="margin-bottom:8px;">
+          <label style="font-size:11px;color:var(--muted);">Categoria</label>
+          <select class="field-input" id="edit-tx-categoria-${tx.id}">
+            ${categories.map(c => `<option value="${esc(c)}" ${c===tx.category?'selected':''}>${esc(c)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label style="font-size:11px;color:var(--muted);">Descrição</label>
+          <input class="field-input" id="edit-tx-descricao-${tx.id}" value="${esc(tx.description || '')}">
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <div class="field" style="flex:1;margin:0;">
+            <label style="font-size:11px;color:var(--muted);">Valor</label>
+            <input type="number" class="field-input font-mono" id="edit-tx-valor-${tx.id}" value="${tx.amount}">
+          </div>
+          <div class="field" style="flex:1;margin:0;">
+            <label style="font-size:11px;color:var(--muted);">Mês</label>
+            <input type="month" class="field-input" id="edit-tx-mes-${tx.id}" value="${tx.month}">
+          </div>
+        </div>
+        ${!isIncome ? `
+          <div class="field" style="margin-bottom:8px;">
+            <label style="font-size:11px;color:var(--muted);">Forma de pagamento</label>
+            <select class="field-input" id="edit-tx-pagamento-${tx.id}" onchange="onEditPagamentoChange('${tx.id}')">
+              <option value="dinheiro" ${tx.paymentType==='dinheiro'?'selected':''}>Dinheiro</option>
+              <option value="debito" ${tx.paymentType==='debito'?'selected':''}>Débito</option>
+              <option value="pix" ${tx.paymentType==='pix'?'selected':''}>Pix</option>
+              <option value="credito" ${tx.paymentType==='credito'?'selected':''}>Cartão de crédito</option>
+            </select>
+            <div id="edit-tx-cartao-wrap-${tx.id}">
+              ${tx.paymentType === 'credito' ? (
+                d.cards.length === 0
+                  ? '<p class="small-note" style="color:var(--rust)">Cadastre um cartão na aba Cartões primeiro.</p>'
+                  : `<select class="field-input" id="edit-tx-cartao-id-${tx.id}" style="margin-top:8px;">${d.cards.map(c => `<option value="${c.id}" ${c.id===tx.cardId?'selected':''}>${esc(c.name)}${c.owner?' ('+esc(c.owner)+')':''}</option>`).join('')}</select>`
+              ) : ''}
+            </div>
+          </div>
+        ` : ''}
+        <div class="field" style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--muted);">Responsável</label>
+          <div class="responsavel-row" id="edit-tx-pessoa-${tx.id}" data-selected="${esc(tx.person)}">
+            ${people.map(p => `<button type="button" class="pill ${p===tx.person?'active':''}" data-action="select-edit-tx-person" data-tx-id="${tx.id}" data-person="${esc(p)}">${esc(p)}</button>`).join('')}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" style="flex:1;" data-action="cancel-tx-edit">Cancelar</button>
+          <button class="btn-primary-sm" style="flex:1;" data-action="save-tx-edit" data-tx-id="${tx.id}">Salvar</button>
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="tx-row" data-tx-id="${tx.id}">
@@ -579,18 +647,10 @@ function renderTxRow(tx){
           <p class="tx-title">${esc(tx.category)}${tx.description ? ' · ' + esc(tx.description) : ''}</p>
           <p class="tx-sub">${esc(subParts.join(' · '))}</p>
         </div>
-        ${editing ? `
-          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-            <input type="number" class="field-input" style="width:84px;padding:6px 8px;margin:0;" id="edit-amount-input" value="${tx.amount}" autofocus>
-            <button data-action="save-amount" data-tx-id="${tx.id}" aria-label="Salvar valor" style="color:var(--teal)">&#10003;</button>
-            <button data-action="cancel-edit" aria-label="Cancelar" style="color:var(--muted)">&#10005;</button>
-          </div>
-        ` : `
-          <button class="tx-amount-btn" data-action="edit-amount" data-tx-id="${tx.id}">
-            <span class="tx-amount font-mono" style="color:${isIncome ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(tx.amount)}</span>
-            <span style="font-size:11px;color:var(--muted)">&#9998;</span>
-          </button>
-        `}
+        <button class="tx-amount-btn" data-action="edit-tx" data-tx-id="${tx.id}">
+          <span class="tx-amount font-mono" style="color:${isIncome ? 'var(--teal)' : 'var(--rust)'}">${fmtBRL(tx.amount)}</span>
+          <span style="font-size:11px;color:var(--muted)">&#9998;</span>
+        </button>
       </div>
       <div class="tx-actions">
         <button class="status-btn ${isConfirmed?'stamped':''}" data-action="set-status" data-tx-id="${tx.id}" data-status="${confirmedLabel}"
@@ -610,6 +670,19 @@ function renderTxRow(tx){
       ` : ''}
     </div>
   `;
+}
+
+function onEditPagamentoChange(txId){
+  const val = document.getElementById('edit-tx-pagamento-' + txId).value;
+  const wrap = document.getElementById('edit-tx-cartao-wrap-' + txId);
+  if (val !== 'credito') { wrap.innerHTML = ''; return; }
+  const cards = state.data.cards;
+  if (cards.length === 0) {
+    wrap.innerHTML = '<p class="small-note" style="color:var(--rust)">Cadastre um cartão na aba Cartões primeiro.</p>';
+  } else {
+    wrap.innerHTML = '<select class="field-input" id="edit-tx-cartao-id-' + txId + '" style="margin-top:8px;">' +
+      cards.map(c => `<option value="${c.id}">${esc(c.name)}${c.owner?' ('+esc(c.owner)+')':''}</option>`).join('') + '</select>';
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -765,7 +838,7 @@ function onPaymentTypeChange(){
   } else {
     const draftCardId = state.novaDraft.cardId;
     wrap.innerHTML = '<select class="field-input" id="nova-cartao-id" style="margin-top:8px;">' +
-      cards.map(c => `<option value="${c.id}" ${c.id===draftCardId?'selected':''}>${esc(c.name)}</option>`).join('') + '</select>';
+      cards.map(c => `<option value="${c.id}" ${c.id===draftCardId?'selected':''}>${esc(c.name)}${c.owner ? ' (' + esc(c.owner) + ')' : ''}</option>`).join('') + '</select>';
   }
 }
 
@@ -776,11 +849,20 @@ function renderCartoes(){
   const d = state.data;
   const mes = state.cartoesMonth || currentMonthKey();
   const months12 = Array.from({length:12}, (_, i) => addMonths(currentMonthKey(), i));
+  const ownerOptions = [...d.people, 'Ambos'];
   return `
     <div class="stack" style="gap:14px;">
-      <div class="card tight" style="display:flex;gap:8px;">
-        <input class="field-input" style="margin:0;" id="novo-cartao-nome" placeholder="Nome do cartão (ex: Nubank Você)">
-        <button class="btn-primary-sm" data-action="add-card" style="flex-shrink:0;">Adicionar</button>
+      <div class="card tight" style="display:flex;flex-direction:column;gap:10px;">
+        <input class="field-input" style="margin:0;" id="novo-cartao-nome" placeholder="Nome do cartão (ex: Nubank)">
+        <div>
+          <label style="font-size:11px;color:var(--muted);">De quem é o cartão</label>
+          <div class="responsavel-row" id="novo-cartao-owner" data-selected="${esc(d.people[0])}" style="margin-top:4px;">
+            ${ownerOptions.map((p,i) => `
+              <button type="button" class="pill ${i===0?'active':''}" data-action="select-card-owner" data-person="${esc(p)}">${esc(p)}</button>
+            `).join('')}
+          </div>
+        </div>
+        <button class="btn-primary-sm" data-action="add-card">Adicionar cartão</button>
       </div>
       <div class="field">
         <label style="font-size:11px;color:var(--muted);">Mês da fatura (para confirmar pagamento)</label>
@@ -788,9 +870,35 @@ function renderCartoes(){
       </div>
       ${d.cards.length === 0 ? '<p class="empty-note">Nenhum cartão cadastrado ainda.</p>' : ''}
       ${d.cards.map(card => {
+        const collapsed = !!state.cartoesCollapsed[card.id];
+        const editing = state.editingCardId === card.id;
         const txs = d.transactions.filter(t => t.cardId === card.id && t.month === mes);
         const total = txs.reduce((a,t) => a + Number(t.amount||0), 0);
         const pending = txs.filter(t => t.status === 'pendente').reduce((a,t) => a + Number(t.amount||0), 0);
+
+        if (editing) {
+          const editOwner = card.owner || d.people[0];
+          return `
+            <div class="card-item">
+              <div class="field">
+                <label style="font-size:11px;color:var(--muted);">Nome do cartão</label>
+                <input class="field-input" id="edit-cartao-nome-${card.id}" value="${esc(card.name)}">
+              </div>
+              <div style="margin-top:10px;">
+                <label style="font-size:11px;color:var(--muted);">De quem é o cartão</label>
+                <div class="responsavel-row" id="edit-cartao-owner-${card.id}" data-selected="${esc(editOwner)}" style="margin-top:4px;">
+                  ${ownerOptions.map(p => `
+                    <button type="button" class="pill ${p===editOwner?'active':''}" data-action="select-edit-card-owner" data-card-id="${card.id}" data-person="${esc(p)}">${esc(p)}</button>
+                  `).join('')}
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-secondary" style="flex:1;" data-action="cancel-edit-card">Cancelar</button>
+                <button class="btn-primary-sm" style="flex:1;" data-action="save-card-edit" data-card-id="${card.id}">Salvar</button>
+              </div>
+            </div>
+          `;
+        }
 
         const proj = months12.map(m => {
           const mTxs = d.transactions.filter(t => t.cardId === card.id && t.month === m);
@@ -801,24 +909,35 @@ function renderCartoes(){
         return `
           <div class="card-item">
             <div class="card-item-top">
-              <p style="font-weight:500;font-size:14px;margin:0;">${esc(card.name)}</p>
-              <button data-action="remove-card" data-card-id="${card.id}" aria-label="Remover cartão" style="color:var(--muted)">&#128465;</button>
+              <button class="month-group-header" style="padding:0;margin:0;width:auto;flex:1;justify-content:flex-start;" data-action="toggle-card-collapse" data-card-id="${card.id}">
+                <span class="chevron ${collapsed?'':'open'}">&#9656;</span>
+                <span style="font-weight:500;font-size:14px;">${esc(card.name)}</span>
+                ${card.owner ? `<span style="font-size:11px;color:var(--muted);font-weight:400;">· ${esc(card.owner)}</span>` : ''}
+              </button>
+              <div style="display:flex;gap:10px;flex-shrink:0;">
+                <button data-action="edit-card" data-card-id="${card.id}" aria-label="Editar cartão" style="color:var(--muted)">&#9998;</button>
+                <button data-action="remove-card" data-card-id="${card.id}" aria-label="Remover cartão" style="color:var(--muted)">&#128465;</button>
+              </div>
             </div>
-            <p class="small-note" style="margin-top:4px;">${esc(monthLabel(mes))}</p>
-            <p class="big-value font-mono" style="margin-top:6px;">${fmtBRL(total)}</p>
-            <p class="small-note" style="color:${pending>0?'var(--rust)':'var(--teal)'}">${pending>0 ? fmtBRL(pending) + ' ainda pendente' : 'Fatura em dia'}</p>
-            ${pending>0 ? `<button class="primary-btn" style="margin-top:10px;" data-action="confirmar-fatura" data-card-id="${card.id}">Confirmar fatura paga</button>` : ''}
+            ${collapsed ? `
+              <p class="small-note" style="margin-top:6px;">${esc(monthLabel(mes))}: ${fmtBRL(total)}${pending>0 ? ' · ' + fmtBRL(pending) + ' pendente' : ' · em dia'}</p>
+            ` : `
+              <p class="small-note" style="margin-top:4px;">${esc(monthLabel(mes))}</p>
+              <p class="big-value font-mono" style="margin-top:6px;">${fmtBRL(total)}</p>
+              <p class="small-note" style="color:${pending>0?'var(--rust)':'var(--teal)'}">${pending>0 ? fmtBRL(pending) + ' ainda pendente' : 'Fatura em dia'}</p>
+              ${pending>0 ? `<button class="primary-btn" style="margin-top:10px;" data-action="confirmar-fatura" data-card-id="${card.id}">Confirmar fatura paga</button>` : ''}
 
-            <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(28,43,51,0.08);">
-              <p class="eyebrow" style="margin:0 0 8px;">Próximas 12 faturas</p>
-              ${proj.map((p, i) => `
-                <div style="display:flex;align-items:center;gap:8px;padding:4px 0;${i>0?'border-top:1px solid rgba(28,43,51,0.05);':''}">
-                  <span class="font-mono" style="font-size:11px;color:var(--muted);width:44px;flex-shrink:0;">${esc(monthLabelShort(p.m))}</span>
-                  <div class="proj-bar-bg" style="height:6px;"><div class="proj-bar-fill" style="height:6px;width:${(p.total/maxProj*100)}%;background:var(--gold);"></div></div>
-                  <span class="font-mono" style="font-size:11px;width:76px;text-align:right;flex-shrink:0;">${fmtBRL(p.total)}</span>
-                </div>
-              `).join('')}
-            </div>
+              <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(28,43,51,0.08);">
+                <p class="eyebrow" style="margin:0 0 8px;">Próximas 12 faturas</p>
+                ${proj.map((p, i) => `
+                  <div style="display:flex;align-items:center;gap:8px;padding:4px 0;${i>0?'border-top:1px solid rgba(28,43,51,0.05);':''}">
+                    <span class="font-mono" style="font-size:11px;color:var(--muted);width:44px;flex-shrink:0;">${esc(monthLabelShort(p.m))}</span>
+                    <div class="proj-bar-bg" style="height:6px;"><div class="proj-bar-fill" style="height:6px;width:${(p.total/maxProj*100)}%;background:var(--gold);"></div></div>
+                    <span class="font-mono" style="font-size:11px;width:76px;text-align:right;flex-shrink:0;">${fmtBRL(p.total)}</span>
+                  </div>
+                `).join('')}
+              </div>
+            `}
           </div>
         `;
       }).join('')}
@@ -941,7 +1060,7 @@ function renderAnalises(){
             <option value="dinheiro" ${f.payment==='dinheiro'?'selected':''}>Dinheiro</option>
             <option value="debito" ${f.payment==='debito'?'selected':''}>Débito</option>
             <option value="pix" ${f.payment==='pix'?'selected':''}>Pix</option>
-            ${d.cards.map(c => `<option value="credito:${c.id}" ${f.payment==='credito:'+c.id?'selected':''}>Cartão ${esc(c.name)}</option>`).join('')}
+            ${d.cards.map(c => `<option value="credito:${c.id}" ${f.payment==='credito:'+c.id?'selected':''}>Cartão ${esc(c.name)}${c.owner ? ' (' + esc(c.owner) + ')' : ''}</option>`).join('')}
           </select>
         </div>
       </section>
@@ -1182,6 +1301,7 @@ document.addEventListener('click', function(e){
     state.lancamentosCollapsed[m] = !state.lancamentosCollapsed[m];
     return render();
   }
+  if (action === 'set-lanc-person') { state.lancamentosPerson = btn.dataset.person; return render(); }
   if (action === 'set-dashboard-filter') {
     state.dashboardFilter = btn.dataset.filter;
     try { localStorage.setItem('painelFiltroPessoa', state.dashboardFilter); } catch (e) { /* ignore */ }
@@ -1357,22 +1477,57 @@ document.addEventListener('click', function(e){
     return;
   }
 
-  if (action === 'edit-amount') { state.editingTxId = btn.dataset.txId; return render(); }
-  if (action === 'cancel-edit') { state.editingTxId = null; return render(); }
+  if (action === 'edit-tx') { state.editingTxId = btn.dataset.txId; return render(); }
+  if (action === 'cancel-tx-edit') { state.editingTxId = null; return render(); }
 
-  if (action === 'save-amount') {
+  if (action === 'select-edit-tx-person') {
+    const row = document.getElementById('edit-tx-pessoa-' + btn.dataset.txId);
+    row.dataset.selected = btn.dataset.person;
+    row.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    return;
+  }
+
+  if (action === 'save-tx-edit') {
     const txId = btn.dataset.txId;
-    const input = document.getElementById('edit-amount-input');
-    const newAmount = Number(input.value);
-    if (isNaN(newAmount) || newAmount < 0) return;
-    const target = state.data.transactions.find(t => t.id === txId);
-    if (!target) return;
-    const affected = state.data.transactions.filter(t =>
-      t.groupId === target.groupId && (t.id === target.id || (t.recurring && t.month > target.month && t.status === 'pendente'))
-    );
+    const tx = state.data.transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    const categoria = document.getElementById('edit-tx-categoria-' + txId).value;
+    const descricao = document.getElementById('edit-tx-descricao-' + txId).value.trim();
+    const novoValor = Number(document.getElementById('edit-tx-valor-' + txId).value);
+    const novoMes = document.getElementById('edit-tx-mes-' + txId).value;
+    const pessoaRow = document.getElementById('edit-tx-pessoa-' + txId);
+    const pessoa = pessoaRow ? pessoaRow.dataset.selected : tx.person;
+
+    if (!categoria) { alert('Escolha uma categoria.'); return; }
+    if (isNaN(novoValor) || novoValor <= 0) { alert('Informe um valor válido.'); return; }
+    if (!novoMes) { alert('Informe o mês.'); return; }
+
+    const updates = { category: categoria, description: descricao, month: novoMes, person: pessoa, amount: novoValor };
+    if (tx.type === 'expense') {
+      const pagamentoEl = document.getElementById('edit-tx-pagamento-' + txId);
+      const pagamento = pagamentoEl ? pagamentoEl.value : tx.paymentType;
+      updates.paymentType = pagamento;
+      if (pagamento === 'credito') {
+        const cartaoEl = document.getElementById('edit-tx-cartao-id-' + txId);
+        if (!cartaoEl) { alert('Cadastre um cartão na aba Cartões primeiro.'); return; }
+        updates.cardId = cartaoEl.value;
+      } else {
+        updates.cardId = null;
+      }
+    }
+
+    const ops = [(batch) => batch.update(txRef.doc(tx.id), updates)];
+    if (novoValor !== tx.amount && tx.recurring) {
+      const futureSiblings = state.data.transactions.filter(t2 =>
+        t2.groupId === tx.groupId && t2.id !== tx.id && t2.month > tx.month && t2.status === 'pendente'
+      );
+      futureSiblings.forEach(t2 => ops.push((batch) => batch.update(txRef.doc(t2.id), { amount: novoValor })));
+    }
+
     state.editingTxId = null;
     render();
-    commitInChunks(affected.map(t => (batch) => batch.update(txRef.doc(t.id), { amount: newAmount }))).catch(markSyncError);
+    commitInChunks(ops).catch(markSyncError);
     return;
   }
 
@@ -1427,17 +1582,55 @@ document.addEventListener('click', function(e){
     return;
   }
 
+  if (action === 'select-card-owner') {
+    const row = document.getElementById('novo-cartao-owner');
+    row.dataset.selected = btn.dataset.person;
+    row.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    return;
+  }
+
   if (action === 'add-card') {
     const input = document.getElementById('novo-cartao-nome');
     const name = input.value.trim();
     if (!name) return;
+    const ownerRow = document.getElementById('novo-cartao-owner');
+    const owner = ownerRow ? ownerRow.dataset.selected : state.data.people[0];
     input.value = '';
-    cardsRef.doc(uid()).set({ name }).catch(markSyncError);
+    cardsRef.doc(uid()).set({ name, owner }).catch(markSyncError);
     return;
   }
 
   if (action === 'remove-card') {
     cardsRef.doc(btn.dataset.cardId).delete().catch(markSyncError);
+    return;
+  }
+
+  if (action === 'toggle-card-collapse') {
+    const id = btn.dataset.cardId;
+    state.cartoesCollapsed[id] = !state.cartoesCollapsed[id];
+    return render();
+  }
+
+  if (action === 'edit-card') { state.editingCardId = btn.dataset.cardId; return render(); }
+  if (action === 'cancel-edit-card') { state.editingCardId = null; return render(); }
+
+  if (action === 'select-edit-card-owner') {
+    const row = document.getElementById('edit-cartao-owner-' + btn.dataset.cardId);
+    row.dataset.selected = btn.dataset.person;
+    row.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    return;
+  }
+
+  if (action === 'save-card-edit') {
+    const id = btn.dataset.cardId;
+    const nameInput = document.getElementById('edit-cartao-nome-' + id);
+    const ownerRow = document.getElementById('edit-cartao-owner-' + id);
+    const name = nameInput.value.trim();
+    if (!name) { alert('Dê um nome para o cartão.'); return; }
+    const owner = ownerRow ? ownerRow.dataset.selected : state.data.people[0];
+    state.editingCardId = null;
+    render();
+    cardsRef.doc(id).update({ name, owner }).catch(markSyncError);
     return;
   }
 
