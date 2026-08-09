@@ -398,7 +398,7 @@ function renderDashboard(){
     const inc = sumFor(tx, m, 'income');
     const exp = sumFor(tx, m, 'expense');
     const pct = inc > 0 ? Math.round((exp/inc)*100) : (exp > 0 ? 999 : 0);
-    return { m, inc, exp, pct };
+    return { m, inc, exp, pct, saldo: inc - exp };
   });
 
   return `
@@ -445,7 +445,10 @@ function renderDashboard(){
                     <span class="font-mono" style="font-size:12px;color:${pctColor(row.pct)}">${row.pct >= 999 ? 's/ receita' : row.pct + '%'}</span>
                   </div>
                   <div class="proj-bar-bg" style="margin:6px 0;"><div class="proj-bar-fill" style="width:${Math.min(row.pct,100)}%;background:${pctColor(row.pct)}"></div></div>
-                  <p style="font-size:11px;color:var(--muted);margin:0;">${fmtBRL(row.exp)} comprometido de ${fmtBRL(row.inc)} previsto</p>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+                    <p style="font-size:11px;color:var(--muted);margin:0;">${fmtBRL(row.exp)} comprometido de ${fmtBRL(row.inc)} previsto</p>
+                    <p class="font-mono" style="font-size:11px;margin:0;flex-shrink:0;color:${row.saldo >= 0 ? 'var(--teal)' : 'var(--rust)'}">${row.saldo >= 0 ? '+' : ''}${fmtBRL(row.saldo)}</p>
+                  </div>
                 </div>
               `).join('')}
             </div>
@@ -466,7 +469,7 @@ function renderLancamentos(){
   const items = state.data.transactions
     .filter(t => monthFilter === 'all' || t.month === monthFilter)
     .filter(t => state.filter === 'all' || t.type === state.filter)
-    .sort((a, b) => (b.month === a.month ? (a.createdAt||0) - (b.createdAt||0) : b.month.localeCompare(a.month)));
+    .sort((a, b) => (b.month === a.month ? (a.createdAt||0) - (b.createdAt||0) : a.month.localeCompare(b.month)));
 
   const groups = [];
   items.forEach(tx => {
