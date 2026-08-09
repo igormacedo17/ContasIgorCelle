@@ -31,6 +31,9 @@
   button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
   input, select { font-family: inherit; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
   #app { max-width: 480px; margin: 0 auto; min-height: 100vh; padding-bottom: 88px; }
 
@@ -322,7 +325,7 @@ const state = {
   settingsOpen: false,
   newTxType: 'income',
   newRepeatMode: 'unica',
-  novaDraft: { categoria: null, mes: currentMonthKey(), descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false },
+  novaDraft: { categoria: null, mes: currentMonthKey(), descricao: '', valor: '', valorTotal: '', parcelas: '', parcelaAtual: '1', paymentType: 'debito', cardId: null, person: null, recorrente: false },
   analiseFiltros: { monthStart: addMonths(currentMonthKey(), -5), monthEnd: currentMonthKey(), category: 'all', person: 'all', payment: 'all' },
   dashboardFilter: (function(){ try { return localStorage.getItem('painelFiltroPessoa') || 'all'; } catch (e) { return 'all'; } })(),
   deleteRecurringModal: null
@@ -337,6 +340,7 @@ function captureNovaDraft(){
   if (el('nova-valor')) d.valor = el('nova-valor').value;
   if (el('nova-valor-total')) d.valorTotal = el('nova-valor-total').value;
   if (el('nova-parcelas')) d.parcelas = el('nova-parcelas').value;
+  if (el('nova-parcela-atual')) d.parcelaAtual = el('nova-parcela-atual').value;
   if (el('nova-pagamento')) d.paymentType = el('nova-pagamento').value;
   if (el('nova-cartao-id')) d.cardId = el('nova-cartao-id').value;
   if (el('nova-responsavel')) d.person = el('nova-responsavel').dataset.selected;
@@ -344,7 +348,7 @@ function captureNovaDraft(){
 }
 
 function resetNovaDraft(){
-  state.novaDraft = { categoria: null, mes: currentMonthKey(), descricao: '', valor: '', valorTotal: '', parcelas: '', paymentType: 'debito', cardId: null, person: null, recorrente: false };
+  state.novaDraft = { categoria: null, mes: currentMonthKey(), descricao: '', valor: '', valorTotal: '', parcelas: '', parcelaAtual: '1', paymentType: 'debito', cardId: null, person: null, recorrente: false };
 }
 
 
@@ -636,6 +640,11 @@ function renderNova(){
           <label>Em quantas vezes foi dividido</label>
           <input class="field-input font-mono" id="nova-parcelas" type="number" inputmode="numeric" min="2" step="1" placeholder="Ex: 6" value="${esc(draft.parcelas || '')}" oninput="onParcelaPreviewChange()">
         </div>
+        <div class="field">
+          <label>Essa é a parcela número</label>
+          <input class="field-input font-mono" id="nova-parcela-atual" type="number" inputmode="numeric" min="1" step="1" placeholder="1" value="${esc(draft.parcelaAtual || '1')}" oninput="onParcelaPreviewChange()">
+          <p class="small-note" style="margin-top:4px;">Se a compra já vem sendo paga fora do app, informe em qual parcela você está agora — só lançamos daqui pra frente, e o valor ainda devido fica certo.</p>
+        </div>
         <p class="small-note" id="parcela-preview" style="margin-top:-8px;">Informe o valor total e o número de parcelas.</p>
       `}
 
@@ -695,10 +704,22 @@ function onParcelaPreviewChange(){
   const total = Number(document.getElementById('nova-valor-total').value);
   const n = Number(document.getElementById('nova-parcelas').value);
   if (!total || !n || n < 2) { preview.textContent = 'Informe o valor total e o número de parcelas.'; return; }
+  const atualEl = document.getElementById('nova-parcela-atual');
+  let atual = Math.round(Number(atualEl && atualEl.value)) || 1;
+  if (atual < 1) atual = 1;
+  if (atual > n) atual = n;
   const amounts = splitInstallments(total, n);
   const mesEl = document.getElementById('nova-mes');
   const mesRef = (mesEl && mesEl.value) || currentMonthKey();
-  preview.textContent = n + 'x de ' + fmtBRL(amounts[0]) + (amounts[0] !== amounts[n-1] ? ' (última parcela: ' + fmtBRL(amounts[n-1]) + ')' : '') + ' — a partir de ' + monthLabel(mesRef) + '.';
+  const restantes = amounts.slice(atual - 1);
+  const somaRestante = restantes.reduce((a, v) => a + v, 0);
+  let txt = n + 'x de ' + fmtBRL(amounts[0]) + (amounts[0] !== amounts[n-1] ? ' (última parcela: ' + fmtBRL(amounts[n-1]) + ')' : '') + '.';
+  if (atual > 1) {
+    txt += ' Lançando a partir da parcela ' + atual + '/' + n + ' (' + restantes.length + ' restantes) em ' + monthLabel(mesRef) + ' — ainda devido: ' + fmtBRL(somaRestante) + '.';
+  } else {
+    txt += ' A partir de ' + monthLabel(mesRef) + '.';
+  }
+  preview.textContent = txt;
 }
 
 function splitInstallments(total, n){
@@ -1096,6 +1117,12 @@ function render(){
 /* ---------------------------------------------------------------
    Actions (event delegation)
 --------------------------------------------------------------- */
+document.addEventListener('wheel', function(e){
+  if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number') {
+    document.activeElement.blur();
+  }
+}, { passive: true });
+
 document.addEventListener('click', function(e){
   const btn = e.target.closest('[data-action]');
   if (!btn) {
@@ -1229,18 +1256,23 @@ document.addEventListener('click', function(e){
       const n = Math.round(Number(document.getElementById('nova-parcelas').value));
       if (isNaN(total) || total <= 0) { alert('Informe o valor total da compra.'); return; }
       if (isNaN(n) || n < 2) { alert('Informe em quantas parcelas foi dividido (2 ou mais).'); return; }
+      let atual = Math.round(Number(document.getElementById('nova-parcela-atual').value)) || 1;
+      if (atual < 1) atual = 1;
+      if (atual > n) atual = n;
       const amounts = splitInstallments(total, n);
-      for (let i = 0; i < n; i++) {
+      let monthOffset = 0;
+      for (let i = atual - 1; i < n; i++) {
         newDocs.push({
           id: uid(),
           groupId, type, category,
           description: description ? (description + ' · parcela ' + (i+1) + '/' + n) : ('parcela ' + (i+1) + '/' + n),
           amount: amounts[i],
-          month: addMonths(mesRef, i),
+          month: addMonths(mesRef, monthOffset),
           recurring: false,
           installment: { index: i + 1, total: n, totalAmount: total },
           person, status: 'pendente', createdAt: base + i, paymentType, cardId
         });
+        monthOffset++;
       }
     } else {
       const amount = Number(document.getElementById('nova-valor').value);
